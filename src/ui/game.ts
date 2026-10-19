@@ -11,6 +11,7 @@ import { Input } from "./input";
 import { Inspector, ShopPanel, Tip } from "./inspector";
 import { planFrame, type Speed } from "./loop";
 import { clearSave, loadSave, stashCorruptSave, writeSave } from "./storage";
+import { entrancePillWidth } from "../render/drawPlan";
 import { framingInsets, stationBounds } from "./framing";
 import { ToolRail } from "./toolRail";
 
@@ -115,8 +116,10 @@ export function startGame(canvas: HTMLCanvasElement): void {
   });
 
   /** The camera may pan the map out from under the rail and the HUD. */
+  const measure = document.createElement("canvas").getContext("2d");
   function updateInsets(): void {
-    const ins = framingInsets(rail.right(), hud.bottom());
+    const west = w.map.entrances.find((e) => e.faces === "W");
+    const ins = framingInsets(rail.right(), hud.bottom(), west && measure ? entrancePillWidth(measure, west) : 0);
     renderer.camera.setInsets(ins.left, ins.top, ins.right, ins.bottom);
   }
   renderer.initialFrame = (cam, world) => {

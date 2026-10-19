@@ -4,8 +4,9 @@ import { PRICES, REMOVE_REFUND } from "../../src/sim/economy";
 import { FacilityKind, tryJoin, Tenant } from "../../src/sim/facilities";
 import { Dir, Grid, Tile, Zone, type Rect } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
+import { fieldFor } from "../../src/sim/walk";
 import { createWorld, fieldTargets, waitingSpots, type World } from "../../src/sim/world";
-import { OX, OY, st, at, entranceTiles, platformTiles, reachable, tilesOf, type XY } from "./helpers";
+import { OX, OY, st, at, entranceTiles, platformTiles, reachable, tilesOf, type XY, runMinutes } from "./helpers";
 
 // Platform 1's foot row at the top of its apron: its only way down to the concourse.
 function wallAcrossPlatformOneFoot(w: World): Rect {
@@ -502,4 +503,22 @@ test("a shop built over someone standing on an island's centre moves them to a w
   expect(x >= unit.x && x < unit.x + unit.w && y >= unit.y && y < unit.y + unit.h).toBe(false);
   expect(reachable(w.grid, ALL_ENTRANCES(), [[x, y]])).toBe(true);
   expect(reachable(w.grid, [[x, y]], platformTiles(1))).toBe(true);
+});
+
+test("building and removing 100 shops leaves no route fields behind for them", () => {
+  const w = createWorld(1);
+  w.ledger.balance = 1e9;
+  expect(applyPlacement(w, previewPlacement(w, "floor", at(13, 64, 7, 9)))).toBe(true);
+  runMinutes(w, 1);
+  const baseline = w.fields.size;
+  for (let k = 0; k < 100; k++) {
+    expect(applyPlacement(w, previewPlacement(w, "retail", at(15, 66, 2, 2)))).toBe(true);
+    const f = [...w.facilities.values()].at(-1)!;
+    fieldFor(w, `facility:${f.id}`);
+    expect(applyPlacement(w, previewPlacement(w, "remove", at(15, 66, 2, 2)))).toBe(true);
+    runMinutes(w, 0.05);
+  }
+  runMinutes(w, 1);
+  // About 640 KB a field at 500 x 320: what is held is what is in use, not one per shop ever built.
+  expect(w.fields.size).toBeLessThanOrEqual(baseline + 2);
 });

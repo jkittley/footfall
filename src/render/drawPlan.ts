@@ -1,6 +1,7 @@
 import { FacilityKind, type Facility } from "../sim/facilities";
 import { Dir, Tile, Zone, type Grid, type Rect } from "../sim/grid";
 import { walkArea } from "../sim/maps/city";
+import type { EntranceDef } from "../sim/maps/harbourStreet";
 import type { World } from "../sim/world";
 import { drawCity, drawCityLabels, drawSubway } from "./drawCity";
 import { futurePairLabel, platformLabelVariants, retailLabel, type Run } from "./labels";
@@ -595,13 +596,22 @@ function drawGates(ctx: CanvasRenderingContext2D, g: Grid, v: View): void {
   ctx.fill(posts);
 }
 
+function pillRuns(e: EntranceDef): Run[] {
+  return [{ text: `Entrance ${e.id}`, strong: true }, { text: " · ", muted: true }, { text: e.name }];
+}
+
+/** An entrance's name pill's width (CSS px), as drawEntrances draws it. */
+export function entrancePillWidth(ctx: CanvasRenderingContext2D, e: EntranceDef): number {
+  return runsWidth(ctx, pillRuns(e), 12) + 24;
+}
+
 /** A pill outside each entrance, on the side it faces: "Entrance A · Harbour Road". */
 function drawEntrances(ctx: CanvasRenderingContext2D, w: World, v: View): void {
   const size = 12;
   const h = 26;
   for (const e of w.map.entrances) {
     const r = e.tiles;
-    const runs: Run[] = [{ text: `Entrance ${e.id}`, strong: true }, { text: " · ", muted: true }, { text: e.name }];
+    const runs = pillRuns(e);
     const tw = runsWidth(ctx, runs, size) + 24;
     let cx: number;
     let cy: number;

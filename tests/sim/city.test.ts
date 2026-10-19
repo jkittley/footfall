@@ -4,7 +4,7 @@ import { Tile } from "../../src/sim/grid";
 import { CITY, flatten, rasterise, smoothPath, walkArea, type CityShape } from "../../src/sim/maps/city";
 import { HARBOUR_STREET, buildGrid } from "../../src/sim/maps/harbourStreet";
 import { createWorld } from "../../src/sim/world";
-import { entranceTiles, isBarrier, st, tilesOf } from "./helpers";
+import { entranceTiles, isBarrier, st, tilesOf, type XY } from "./helpers";
 
 function shape(name: string): CityShape {
   const s = CITY.shapes.find((sh) => sh.name === name);
@@ -71,15 +71,15 @@ describe("the city map", () => {
   test("every later stage's site is locked, named and says when it opens", () => {
     const locked = CITY.shapes.filter((s) => s.kind === "locked").map((s) => [s.name, s.area]);
     expect(locked).toEqual([
-      ["Airport", "Opens at 18 + 6"],
-      ["Exhibition centre", "Opens at 24 gates"],
-      ["Exhibition car park", "Opens at 24 gates"],
-      ["Shopping mall", "Opens at 36 gates"],
-      ["Bus depot", "Opens at 6 platforms"],
-      ["Stadium", "Opens at 48 gates"],
-      ["Stadium car park", "Opens at 48 gates"],
+      ["Airport", "Opens at 18 rail + 6 subway platforms"],
+      ["Exhibition centre", "Opens at 24 airport gates"],
+      ["Exhibition car park", "Opens at 24 airport gates"],
+      ["Shopping mall", "Opens at 36 airport gates"],
+      ["Bus depot", "Opens at 6 rail platforms"],
+      ["Stadium", "Opens at 48 airport gates"],
+      ["Stadium car park", "Opens at 48 airport gates"],
     ]);
-    expect([CITY.subway.name, CITY.subway.area]).toEqual(["Subway (below)", "Opens at 10 platforms"]);
+    expect([CITY.subway.name, CITY.subway.area]).toEqual(["Subway (below)", "Opens at 10 rail platforms"]);
     const g = rasterise(CITY);
     for (const s of CITY.shapes.filter((sh) => sh.kind === "locked")) {
       const [x, y] = s.points.reduce(([ax, ay], [px, py]) => [ax + px / s.points.length, ay + py / s.points.length], [0, 0]);
@@ -104,7 +104,10 @@ describe("the city map", () => {
 
   test("water, park, road and locked tiles take no build", () => {
     const w = createWorld(1);
-    for (const [x, y] of [st(105, 70), st(100, 40), st(20, 84)]) {
+    // Riverside Gardens, the river, Harbour Road (all in the grounds) and the bus depot (outside them).
+    const depot: XY = [180, 220];
+    for (const [x, y] of [st(105, 70), st(100, 40), st(20, 84), depot]) {
+      expect([Tile.Park, Tile.Water, Tile.Road, Tile.Locked]).toContain(w.grid.tile(x, y));
       const p = previewPlacement(w, "floor", { x, y, w: 1, h: 1 });
       expect(p.valid).toBe(false);
       expect(p.blocked).toEqual([w.grid.idx(x, y)]);

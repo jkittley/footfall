@@ -121,3 +121,23 @@ describe("route fields", () => {
     expect(f[g.idx(0, 0)]).toBe(4);
   });
 });
+
+describe("FieldCache eviction", () => {
+  test("a key not asked for while the grid stood still is dropped at the next change; delete drops one at once", () => {
+    const g = openFloor(5, 1);
+    const c = new FieldCache(g);
+    c.get("kept", () => [g.idx(4, 0)]);
+    c.get("idle", () => [g.idx(0, 0)]);
+    c.get("gone", () => [g.idx(2, 0)]);
+    c.delete("gone");
+    expect(c.size).toBe(2);
+    g.setTile(2, 0, Tile.Wall);
+    c.get("kept", () => [g.idx(4, 0)]);
+    // "idle" was asked for while the last version stood, so it survives this change...
+    expect(c.size).toBe(2);
+    g.setTile(1, 0, Tile.Wall);
+    c.get("kept", () => [g.idx(4, 0)]);
+    // ...but not the next, having gone unasked through a whole version.
+    expect(c.size).toBe(1);
+  });
+});

@@ -28,7 +28,7 @@ export const TREE = "#A9C98A";
 export const TREE_LIGHT = "#C6DDAE";
 /** A tree's soft shadow (Wall at 8%). */
 export const TREE_SHADOW = "rgba(35,38,43,0.08)";
-/** The carriageway. */
+/** The carriageway: the same pale as SHORE on purpose (the mockup's), kept apart so either can change alone. */
 export const ROAD = "#FBFAF7";
 /** The kerb either side of a road. */
 export const KERB = "#D9D3C8";

@@ -15,6 +15,8 @@ export interface CityShape {
   width?: number;
   /** Locked: the line saying when it opens. */
   area?: string;
+  /** Locked: which venue's silhouette is drawn under the haze. */
+  venue?: "airport" | "exhibition" | "carpark" | "mall" | "depot" | "stadium";
   /** Where its name is written (tile coordinates) and at what angle (radians); unnamed on the map if absent. */
   label?: { at: Point; angle?: number };
 }
@@ -128,17 +130,17 @@ export const CITY: City = {
     { kind: "pavement", points: box(149, 180, 4, 2) },
     { kind: "pavement", points: box(132, 155, 8, 3) },
     { kind: "pavement", name: "Footbridge", points: box(260, 155, 72, 4) },
-    { kind: "locked", name: "Airport", area: "Opens at 18 + 6", points: rounded(332, 16, 140, 164, 6) },
-    { kind: "locked", name: "Exhibition centre", area: "Opens at 24 gates", points: rounded(14, 8, 104, 62, 5) },
-    { kind: "locked", name: "Exhibition car park", area: "Opens at 24 gates", points: rounded(14, 84, 70, 28, 4) },
-    { kind: "locked", name: "Shopping mall", area: "Opens at 36 gates", points: rounded(24, 200, 82, 56, 5) },
-    { kind: "locked", name: "Bus depot", area: "Opens at 6 platforms", points: rounded(140, 196, 80, 48, 5) },
-    { kind: "locked", name: "Stadium", area: "Opens at 48 gates", points: ellipse(398, 246, 40, 28) },
-    { kind: "locked", name: "Stadium car park", area: "Opens at 48 gates", points: rounded(446, 212, 46, 74, 4) },
+    { kind: "locked", venue: "airport", name: "Airport", area: "Opens at 18 rail + 6 subway platforms", points: rounded(332, 16, 140, 164, 6) },
+    { kind: "locked", venue: "exhibition", name: "Exhibition centre", area: "Opens at 24 airport gates", points: rounded(14, 8, 104, 62, 5) },
+    { kind: "locked", venue: "carpark", name: "Exhibition car park", area: "Opens at 24 airport gates", points: rounded(14, 84, 70, 28, 4) },
+    { kind: "locked", venue: "mall", name: "Shopping mall", area: "Opens at 36 airport gates", points: rounded(24, 200, 82, 56, 5) },
+    { kind: "locked", venue: "depot", name: "Bus depot", area: "Opens at 6 rail platforms", points: rounded(140, 196, 80, 48, 5) },
+    { kind: "locked", venue: "stadium", name: "Stadium", area: "Opens at 48 airport gates", points: ellipse(398, 246, 40, 28) },
+    { kind: "locked", venue: "carpark", name: "Stadium car park", area: "Opens at 48 airport gates", points: rounded(446, 212, 46, 74, 4) },
   ],
   subway: {
     name: "Subway (below)",
-    area: "Opens at 10 platforms",
+    area: "Opens at 10 rail platforms",
     outline: rounded(157, 141, 86, 38, 4),
     tunnels: [
       [[243, 160], [290, 150], [332, 140]],

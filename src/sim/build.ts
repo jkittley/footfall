@@ -449,16 +449,17 @@ function currentRegions(g: Grid): Regions {
  * change; otherwise the reason: the lowest platform no entrance it had still reaches, else the
  * first entrance that lost a platform it had.
  */
-function reachReason(w: World, after: Grid): string | null {
-  const before = currentRegions(w.grid);
-  const now = new Regions(after);
+function reachReason(w: World, edits: readonly Edit[]): string | null {
+  const g = w.grid;
+  const before = currentRegions(g);
   // Where its passengers board: built-on platform and the gate row do not count.
   const platforms = activePlatformIds(w).map((id) => ({ id, tiles: fieldTargets(w, `platform:${id}`) }));
-  const entrances = w.map.entrances.map((e) => ({ id: e.id, tiles: rectTiles(w.grid, e.tiles) }));
+  const entrances = w.map.entrances.map((e) => ({ id: e.id, tiles: rectTiles(g, e.tiles) }));
+  const now = regionsWith(g, edits);
   const pairs = entrances.flatMap((e) =>
-    platforms.filter((p) => shares(labelsOf(w.grid, before, e.tiles), labelsOf(w.grid, before, p.tiles))).map((p) => ({ e, p })),
+    platforms.filter((p) => shares(labelsOf(g, before, e.tiles), labelsOf(g, before, p.tiles))).map((p) => ({ e, p })),
   );
-  const kept = pairs.filter(({ e, p }) => shares(labelsOf(after, now, e.tiles), labelsOf(after, now, p.tiles)));
+  const kept = pairs.filter(({ e, p }) => shares(labelsOf(g, now, e.tiles), labelsOf(g, now, p.tiles)));
   for (const p of platforms) {
     if (pairs.some((x) => x.p === p) && !kept.some((x) => x.p === p)) return `Would cut off Platform ${p.id}`;
   }
@@ -466,6 +467,28 @@ function reachReason(w: World, after: Grid): string | null {
     if (pairs.filter((x) => x.e === e).length > kept.filter((x) => x.e === e).length) return `Would block Entrance ${e.id}`;
   }
   return null;
+}
+
+/**
+ * The regions the grid would have with `edits` applied: written straight into its arrays (no
+ * version bump, so no cache sees them), labelled, and put back, rather than cloning the whole city.
+ * Walkability reads only tiles and zones, so directions are left alone.
+ */
+function regionsWith(g: Grid, edits: readonly Edit[]): Regions {
+  const saved = edits.map((e) => [e.i, g.tiles[e.i]!, g.zones[e.i]!] as const);
+  for (const e of edits) {
+    if (e.tile !== undefined) g.tiles[e.i] = e.tile;
+    if (e.zone !== undefined) g.zones[e.i] = e.zone;
+  }
+  try {
+    return new Regions(g);
+  } finally {
+    for (let k = saved.length - 1; k >= 0; k--) {
+      const [i, t, z] = saved[k]!;
+      g.tiles[i] = t;
+      g.zones[i] = z;
+    }
+  }
 }
 
 function plan(w: World, tool: ToolId, rect: Rect, opts: BuildOpts): Plan {
@@ -495,9 +518,7 @@ function plan(w: World, tool: ToolId, rect: Rect, opts: BuildOpts): Plan {
   }
   if (!pv.valid) return p;
   if (p.edits.length > 0) {
-    const after = w.grid.clone();
-    applyEdits(after, p.edits);
-    const reason = reachReason(w, after);
+    const reason = reachReason(w, p.edits);
     if (reason !== null) return refuse(p, reason);
   }
   if (pv.cost > 0 && !w.ledger.canAfford(pv.cost)) return refuse(p, "Not enough money");

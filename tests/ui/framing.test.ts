@@ -41,7 +41,9 @@ test("built floor widens the bounds", () => {
 test("the framed station leaves room for Entrance B's pill right of the rail", () => {
   const w = createWorld(1);
   const railRight = 112;
-  const ins = framingInsets(railRight, 200);
+  // The pill as measured: "Entrance B · Market Street" is about 200px wide at 12px.
+  const pill = 210;
+  const ins = framingInsets(railRight, 200, pill);
   expect(ins.left).toBeGreaterThan(railRight);
   const cam = new Camera();
   cam.setBounds(w.grid.w, w.grid.h);
@@ -49,9 +51,9 @@ test("the framed station leaves room for Entrance B's pill right of the rail", (
   cam.setInsets(ins.left, ins.top, ins.right, ins.bottom);
   const r = stationBounds(w.grid)!;
   if (!cam.frame(r, 2, 1.5, 2)) cam.frame(stationBounds(w.grid, true)!, 2, 1.5, 2);
-  // "Entrance B · Market Street" is about 200px wide at 12px, drawn 0.6 of a tile left of the entrance.
+  // Drawn 0.6 of a tile left of the entrance.
   const b = w.map.entrances.find((e) => e.id === "B")!.tiles;
   const [left] = cam.worldToScreen(b.x, 0);
-  expect(left - 0.6 * cam.scale - 210).toBeGreaterThan(railRight);
+  expect(left - 0.6 * cam.scale - pill).toBeGreaterThan(railRight);
   expect(cam.zoom).toBeGreaterThanOrEqual(1.5);
 });

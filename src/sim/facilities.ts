@@ -233,6 +233,8 @@ export function removeFacility(w: World, f: Facility): void {
   f.queue.length = 0;
   f.serving.length = 0;
   w.facilities.delete(f.id);
+  w.fields.delete(`facility:${f.id}`);
+  w.fields.delete(`seat:${f.id}`);
   const r = f.rect;
   for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) w.grid.setZone(x, y, Zone.None, -1);
 }

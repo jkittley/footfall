@@ -193,23 +193,42 @@ export function walkMinutes(field: Float32Array, tile: number): number {
 
 /**
  * Caches fields per key for one grid; a key recomputes when that grid's version has moved, into
- * its old buffer (a city-sized field is big, and a build makes every key recompute). A field handed
- * out is therefore only good until the next get of its key.
+ * its old buffer (a city-sized field is 640 KB, and a build makes every key recompute), so a field
+ * handed out is only good until the next get of its key. A key not asked for while one grid
+ * version stood is dropped when the grid next changes, so fields for places nobody walks to any
+ * more (a removed shop, a seat long empty) do not pile up; delete drops one at once.
  */
 export class FieldCache {
-  private readonly entries = new Map<string, { version: number; field: Float32Array }>();
+  private readonly entries = new Map<string, { version: number; field: Float32Array; used: number }>();
+  /** The grid version the last get saw. */
+  private seen = -1;
   constructor(private readonly grid: Grid) {}
 
   get(key: string, targets: () => readonly number[]): Float32Array {
+    const v = this.grid.version;
+    if (v !== this.seen) {
+      for (const [k, e] of this.entries) if (e.used !== this.seen) this.entries.delete(k);
+      this.seen = v;
+    }
     const hit = this.entries.get(key);
-    if (hit && hit.version === this.grid.version) return hit.field;
     if (hit) {
+      hit.used = v;
+      if (hit.version === v) return hit.field;
       computeField(this.grid, targets(), hit.field);
-      hit.version = this.grid.version;
+      hit.version = v;
       return hit.field;
     }
     const field = computeField(this.grid, targets());
-    this.entries.set(key, { version: this.grid.version, field });
+    this.entries.set(key, { version: v, field, used: v });
     return field;
+  }
+
+  delete(key: string): void {
+    this.entries.delete(key);
+  }
+
+  /** How many fields are held. */
+  get size(): number {
+    return this.entries.size;
   }
 }

@@ -18,6 +18,7 @@ import {
   WATER_GRID,
   WATER_INK,
 } from "./palette";
+import { drawVenue } from "./drawVenues";
 import { clamp, uiFont } from "./text";
 import { sx, sy, type View } from "./view";
 
@@ -236,40 +237,59 @@ function drawPavement(ctx: CanvasRenderingContext2D, v: View, s: CityShape, wate
   }
 }
 
-/** A later stage's site: hazed, with its name and when it opens. */
+/** A later stage's site: hazed, a faded drawing of the venue to come, its name and when it opens. */
 function drawLocked(ctx: CanvasRenderingContext2D, v: View, s: CityShape): void {
   const p = pathOf(v, s);
   ctx.fillStyle = HAZE;
   ctx.fill(p);
+  const pts = s.points;
+  const box = {
+    x0: Math.min(...pts.map((q) => q[0])),
+    y0: Math.min(...pts.map((q) => q[1])),
+    x1: Math.max(...pts.map((q) => q[0])),
+    y1: Math.max(...pts.map((q) => q[1])),
+  };
+  ctx.save();
+  ctx.clip(p);
+  drawVenue(ctx, v, s, box);
+  ctx.restore();
   ctx.save();
   ctx.setLineDash([6, 5]);
   ctx.strokeStyle = TRACK;
   ctx.lineWidth = 1.5;
   ctx.stroke(p);
   ctx.restore();
-  if (!s.name) return;
-  const b = shapeBounds(s);
-  const pad = 2;
-  const w = (b.x1 - b.x0 - 2 * pad) * v.s;
-  const h = (b.y1 - b.y0 - 2 * pad) * v.s;
+  if (s.name) lockedLabel(ctx, v, s.name, s.area, box);
+}
+
+/** The name and opening line, on a haze pad over the venue's drawing; left off where they do not fit. */
+function lockedLabel(ctx: CanvasRenderingContext2D, v: View, name: string, area: string | undefined, b: { x0: number; y0: number; x1: number; y1: number }): void {
+  const w = (b.x1 - b.x0) * v.s;
+  const h = (b.y1 - b.y0) * v.s;
   const size = clamp(1.2 * v.s, 11, 18);
   const small = Math.max(10, size * 0.8);
   ctx.font = uiFont(size, 700);
-  const nameW = ctx.measureText(s.name).width;
+  const nameW = ctx.measureText(name).width;
   ctx.font = uiFont(small, 500);
-  const lineW = s.area ? ctx.measureText(s.area).width : 0;
-  if (Math.max(nameW, lineW) + 8 > w || size + small * 1.4 + 8 > h) return;
+  const lineW = area ? ctx.measureText(area).width : 0;
+  const padW = Math.max(nameW, lineW) + 16;
+  const padH = area ? size + small * 1.4 + 10 : size + 10;
+  if (padW + 4 > w || padH + 4 > h) return;
   const cx = sx(v, (b.x0 + b.x1) / 2);
   const cy = sy(v, (b.y0 + b.y1) / 2);
+  ctx.beginPath();
+  ctx.roundRect(cx - padW / 2, cy - padH / 2, padW, padH, 6);
+  ctx.fillStyle = HAZE;
+  ctx.fill();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.font = uiFont(size, 700);
   ctx.fillStyle = INK;
-  ctx.fillText(s.name, cx, s.area ? cy - small * 0.7 : cy);
-  if (s.area) {
+  ctx.fillText(name, cx, area ? cy - small * 0.7 : cy);
+  if (area) {
     ctx.font = uiFont(small, 500);
     ctx.fillStyle = INK_2;
-    ctx.fillText(s.area, cx, cy + size * 0.7);
+    ctx.fillText(area, cx, cy + size * 0.7);
   }
 }
 
