@@ -209,6 +209,17 @@ export function refreshAccess(w: World, f: Facility): void {
   }
 }
 
+/** Takes person `pid` out of any queue, service or seat they hold, and sends them on their way. */
+export function releasePerson(w: World, pid: number): void {
+  for (const f of w.facilities.values()) {
+    const q = f.queue.indexOf(pid);
+    if (q >= 0) f.queue.splice(q, 1);
+    const s = f.serving.findIndex((x) => x.pid === pid);
+    if (s >= 0) f.serving.splice(s, 1);
+  }
+  resume(w.people, pid);
+}
+
 /** Takes `f` down: everyone queued, served or seated there walks on, and its tiles are unzoned. */
 export function removeFacility(w: World, f: Facility): void {
   const p = w.people;

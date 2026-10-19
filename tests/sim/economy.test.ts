@@ -151,6 +151,16 @@ test("closeDay sums income and costs, reports the balance and resets today", () 
   expect(l.balance).toBe(808);
 });
 
+test("closeDay counts removal refunds as income", () => {
+  const l = new Ledger(1000);
+  l.debit("build", 80);
+  l.credit("removals", 40);
+  const s = l.closeDay(0, { movedToday: 0, onTimeToday: 0, missedToday: 0 });
+  expect(s.income).toBe(40);
+  expect(s.costs).toBe(80);
+  expect(s.balance).toBe(960);
+});
+
 test("an excluded on-time outcome still earns the fare", () => {
   const w = createWorld(1);
   outcomeFor(w, Journey.Departing, true, true);

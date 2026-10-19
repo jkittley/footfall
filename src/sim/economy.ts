@@ -4,7 +4,8 @@ import type { World } from "./world";
 export type LedgerLine = "rent" | "fares" | "refunds" | "build" | "maintenance" | "evictions" | "removals";
 
 const LINES: readonly LedgerLine[] = ["rent", "fares", "refunds", "build", "maintenance", "evictions", "removals"];
-const INCOME_LINES: ReadonlySet<LedgerLine> = new Set<LedgerLine>(["rent", "fares"]);
+// Removal refunds come back as income.
+const INCOME_LINES: ReadonlySet<LedgerLine> = new Set<LedgerLine>(["rent", "fares", "removals"]);
 
 export interface DayStats {
   movedToday: number;

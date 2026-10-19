@@ -5,7 +5,7 @@ import { FacilityKind, tryJoin, Tenant } from "../../src/sim/facilities";
 import { Dir, Grid, Tile, Zone, type Rect } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
 import { createWorld, type World } from "../../src/sim/world";
-import { entranceTiles, reachable, tilesOf, type XY } from "./helpers";
+import { entranceTiles, platformTiles, reachable, tilesOf, type XY } from "./helpers";
 
 // Platform 1's foot row at the top of its apron: its only way down to the concourse.
 function wallAcrossPlatformOneFoot(w: World): Rect {
@@ -91,6 +91,71 @@ test("retail too small and off-floor are refused with reasons", () => {
   expect(ground.reason).toBe("Must be on plain floor");
 });
 
+test("a cost exactly equal to the balance is allowed", () => {
+  const w = createWorld(1);
+  w.ledger.balance = 600;
+  const p = previewPlacement(w, "floor", { x: 5, y: 61, w: 4, h: 2 });
+  expect(p.valid).toBe(true);
+  expect(applyPlacement(w, p)).toBe(true);
+  expect(w.ledger.balance).toBe(0);
+});
+
+test("a unit with no walkable tile beside it is refused", () => {
+  const w = createWorld(1);
+  // An island of floor walled in by ground on every side.
+  for (const [x, y] of tilesOf({ x: 40, y: 40, w: 2, h: 2 })) w.grid.setTile(x, y, Tile.Floor);
+  expect(previewPlacement(w, "retail", { x: 40, y: 40, w: 2, h: 2 }).reason).toBe("Needs a floor tile beside it");
+});
+
+test("nothing to remove and a blocked entrance are refused with reasons", () => {
+  const w = createWorld(1);
+  expect(previewPlacement(w, "remove", { x: 40, y: 40, w: 2, h: 2 }).reason).toBe("Nothing to remove here");
+  // The starting floor between Market Place and the concourse is Entrance B's only way in.
+  const p = previewPlacement(w, "remove", { x: 1, y: 55, w: 5, h: 3 });
+  expect(p.valid).toBe(false);
+  expect(p.reason).toBe("Would block Entrance B");
+});
+
+test("separate entrance-to-platform regions that already exist do not freeze building", () => {
+  const w = createWorld(1);
+  // Split the station in two: Market Place and Platform 1 west of x 11, Harbour Road and Platform 2 east.
+  for (let y = 54; y <= 59; y++) w.grid.setTile(11, y, Tile.Wall);
+  w.grid.setTile(9, 60, Tile.Wall);
+  w.grid.setTile(10, 60, Tile.Wall);
+  expect(reachable(w.grid, entranceTiles("A"), platformTiles(1))).toBe(false);
+  expect(reachable(w.grid, entranceTiles("A"), platformTiles(2))).toBe(true);
+  expect(reachable(w.grid, entranceTiles("B"), platformTiles(1))).toBe(true);
+  const p = previewPlacement(w, "floor", { x: 5, y: 61, w: 4, h: 2 });
+  expect(p.reason).toBeNull();
+  expect(p.valid).toBe(true);
+  // Cutting either half is still refused.
+  expect(previewPlacement(w, "wall", { x: 8, y: 54, w: 3, h: 1 }).reason).toBe("Would cut off Platform 1");
+  expect(previewPlacement(w, "remove", { x: 1, y: 55, w: 5, h: 3 }).reason).toBe("Would cut off Platform 1");
+});
+
+test("a ring of walls closed round a queue sends the shopper back out", () => {
+  const w = createWorld(1);
+  // A floor bay east of the floor column, and a toilet in it.
+  expect(applyPlacement(w, previewPlacement(w, "floor", { x: 13, y: 64, w: 7, h: 9 }))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "toilet", { x: 16, y: 67, w: 2, h: 2 }))).toBe(true);
+  const f = [...w.facilities.values()][0]!;
+  const front = f.queueTiles[0]!;
+  const [qx, qy] = w.grid.xy(front);
+  const i = person(w, qx, qy);
+  expect(tryJoin(w, f, i)).toBe(true);
+  w.people.targetKey[i] = "";
+  // Two wall placements: the first leaves a gap, the second closes the bay off.
+  expect(applyPlacement(w, previewPlacement(w, "wall", { x: 13, y: 64, w: 1, h: 5 }))).toBe(true);
+  expect(w.people.state[i]).toBe(PState.InQueue);
+  expect(applyPlacement(w, previewPlacement(w, "wall", { x: 13, y: 69, w: 1, h: 4 }))).toBe(true);
+  expect(reachable(w.grid, entranceTiles("A"), [[16, 66]])).toBe(false);
+  expect(w.people.state[i]).toBe(PState.Walking);
+  expect(f.queue).not.toContain(i);
+  const at = tileAt(w, i);
+  expect(reachable(w.grid, ALL_ENTRANCES(), [at])).toBe(true);
+  expect(reachable(w.grid, [at], platformTiles(1))).toBe(true);
+});
+
 test("not enough money refuses", () => {
   const w = createWorld(1);
   w.ledger.balance = 50;
@@ -172,12 +237,21 @@ test("a travelator runs along its direction and sets it through the grid", () =>
   expect(w.grid.zone(9, 64)).toBe(Zone.Travelator);
   expect(w.grid.dir[w.grid.idx(9, 64)]).toBe(Dir.S);
 
+  // Touching one tile takes the whole travelator up, refunding every tile of it.
   const rm = previewPlacement(w, "remove", { x: 9, y: 64, w: 1, h: 1 });
-  expect(rm.cost).toBe(-REMOVE_REFUND * PRICES.travelator);
+  expect(rm.tiles).toHaveLength(5);
+  expect(rm.cost).toBe(-REMOVE_REFUND * 5 * PRICES.travelator);
   expect(applyPlacement(w, rm)).toBe(true);
-  expect(w.grid.zone(9, 64)).toBe(Zone.None);
-  expect(w.grid.dir[w.grid.idx(9, 64)]).toBe(Dir.None);
-  expect(w.grid.tile(9, 64)).toBe(Tile.Floor);
+  for (const [x, y] of tilesOf(line)) {
+    expect(w.grid.zone(x, y)).toBe(Zone.None);
+    expect(w.grid.dir[w.grid.idx(x, y)]).toBe(Dir.None);
+    expect(w.grid.tile(x, y)).toBe(Tile.Floor);
+  }
+});
+
+test("a travelator shorter than three tiles is refused", () => {
+  const w = createWorld(1);
+  expect(previewPlacement(w, "travelator", { x: 9, y: 62, w: 1, h: 2 }, { dir: Dir.S }).reason).toBe("Too short");
 });
 
 test("setDir bumps the grid version", () => {
@@ -190,8 +264,8 @@ test("setDir bumps the grid version", () => {
 
 test("a sign needs a kind and one plain floor tile", () => {
   const w = createWorld(1);
-  expect(previewPlacement(w, "sign", { x: 7, y: 57, w: 1, h: 1 }).valid).toBe(false);
-  expect(previewPlacement(w, "sign", { x: 7, y: 57, w: 2, h: 1 }, { signKind: "toilets" }).valid).toBe(false);
+  expect(previewPlacement(w, "sign", { x: 7, y: 57, w: 1, h: 1 }).reason).toBe("Choose a sign");
+  expect(previewPlacement(w, "sign", { x: 7, y: 57, w: 2, h: 1 }, { signKind: "toilets" }).reason).toBe("Pick one tile");
   const p = previewPlacement(w, "sign", { x: 7, y: 57, w: 1, h: 1 }, { signKind: "toilets" });
   expect(p.valid).toBe(true);
   expect(p.cost).toBe(PRICES.sign);

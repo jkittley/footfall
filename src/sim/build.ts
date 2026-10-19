@@ -1,9 +1,10 @@
 import { PRICES, REMOVE_REFUND } from "./economy";
-import { FacilityKind, createFacility, refreshAccess, removeFacility, type Facility } from "./facilities";
+import { FacilityKind, createFacility, refreshAccess, releasePerson, removeFacility, type Facility } from "./facilities";
 import { Dir, Tile, Zone, type Grid, type Rect } from "./grid";
 import { nudgeToWalkable } from "./movement";
 import { addSign, refreshSigns, type Sign } from "./needs";
 import { PState } from "./people";
+import { tileOf } from "./walk";
 import { activePlatformIds, walkableTargets, type World } from "./world";
 
 export type ToolId = "floor" | "retail" | "seating" | "toilet" | "wall" | "rail" | "sign" | "travelator" | "remove";
@@ -242,6 +243,11 @@ function planRemove(w: World, plan: Plan): Plan {
     refund += PRICES.sign;
     changed.add(s.tile);
   }
+  for (const i of travelatorTiles(g, rectTiles(g, pv.rect))) {
+    plan.edits.push({ i, zone: Zone.None, dir: Dir.None });
+    refund += PRICES.travelator;
+    changed.add(i);
+  }
   for (const i of rectTiles(g, pv.rect)) {
     const t = g.tiles[i] as Tile;
     if (t === Tile.Wall || t === Tile.Rail) {
@@ -249,9 +255,7 @@ function planRemove(w: World, plan: Plan): Plan {
       refund += t === Tile.Wall ? PRICES.wall : PRICES.rail;
       changed.add(i);
     } else if (g.zones[i] === Zone.Travelator) {
-      plan.edits.push({ i, zone: Zone.None, dir: Dir.None });
-      refund += PRICES.travelator;
-      changed.add(i);
+      continue;
     } else if (plainFloor(w, signs, i) && !isFoot(w, i)) {
       plan.edits.push({ i, tile: Tile.Ground });
       refund += PRICES.floor;
@@ -266,11 +270,27 @@ function planRemove(w: World, plan: Plan): Plan {
   return plan;
 }
 
-function applyEdits(g: Grid, edits: readonly Edit[]): void {
+/** Every tile of each travelator touching `tiles`, whole travelators as one owner id each. */
+function travelatorTiles(g: Grid, tiles: readonly number[]): number[] {
+  const owners = new Set<number>();
+  const out = new Set<number>();
+  for (const i of tiles) {
+    if (g.zones[i] !== Zone.Travelator) continue;
+    const owner = g.zoneOwner[i]!;
+    if (owner >= 0) owners.add(owner);
+    else out.add(i);
+  }
+  if (owners.size > 0)
+    for (let i = 0; i < g.zones.length; i++) if (g.zones[i] === Zone.Travelator && owners.has(g.zoneOwner[i]!)) out.add(i);
+  return [...out];
+}
+
+/** Zones are written with `owner` (a new travelator's id), or none when cleared. */
+function applyEdits(g: Grid, edits: readonly Edit[], owner = -1): void {
   for (const e of edits) {
     const [x, y] = g.xy(e.i);
     if (e.tile !== undefined) g.setTile(x, y, e.tile);
-    if (e.zone !== undefined) g.setZone(x, y, e.zone, -1);
+    if (e.zone !== undefined) g.setZone(x, y, e.zone, e.zone === Zone.None ? -1 : owner);
     if (e.dir !== undefined) g.setDir(x, y, e.dir);
   }
 }
@@ -316,25 +336,36 @@ function shares(a: Set<number>, b: Set<number>): boolean {
   return false;
 }
 
+// Previews run on every mouse move: the world's own regions only change with its grid.
+const regionCache = new WeakMap<Grid, { version: number; label: Int32Array }>();
+
+function currentRegions(g: Grid): Int32Array {
+  const hit = regionCache.get(g);
+  if (hit && hit.version === g.version) return hit.label;
+  const label = regions(g);
+  regionCache.set(g, { version: g.version, label });
+  return label;
+}
+
 /**
- * Null if, after the change, every entrance that reached an active platform before still reaches
- * every active platform it could reach, and each such platform is still reached from an entrance;
- * otherwise the reason (the lowest platform cut off, else the first entrance blocked).
+ * Null if every (entrance, active platform) pair that shared a region before still does after the
+ * change; otherwise the reason: the lowest platform no entrance it had still reaches, else the
+ * first entrance that lost a platform it had.
  */
 function reachReason(w: World, after: Grid): string | null {
-  const before = regions(w.grid);
+  const before = currentRegions(w.grid);
   const now = regions(after);
   const platforms = activePlatformIds(w).map((id) => ({ id, tiles: rectTiles(w.grid, w.map.slots[id - 1]!.platform) }));
   const entrances = w.map.entrances.map((e) => ({ id: e.id, tiles: rectTiles(w.grid, e.tiles) }));
-  const linked = entrances.filter((e) => platforms.some((p) => shares(labelsOf(before, e.tiles), labelsOf(before, p.tiles))));
-  const served = platforms.filter((p) => linked.some((e) => shares(labelsOf(before, e.tiles), labelsOf(before, p.tiles))));
-  for (const p of served) {
-    const at = labelsOf(now, p.tiles);
-    if (!linked.some((e) => shares(labelsOf(now, e.tiles), at))) return `Would cut off Platform ${p.id}`;
+  const pairs = entrances.flatMap((e) =>
+    platforms.filter((p) => shares(labelsOf(before, e.tiles), labelsOf(before, p.tiles))).map((p) => ({ e, p })),
+  );
+  const kept = pairs.filter(({ e, p }) => shares(labelsOf(now, e.tiles), labelsOf(now, p.tiles)));
+  for (const p of platforms) {
+    if (pairs.some((x) => x.p === p) && !kept.some((x) => x.p === p)) return `Would cut off Platform ${p.id}`;
   }
-  for (const e of linked) {
-    const from = labelsOf(now, e.tiles);
-    if (!served.every((p) => shares(from, labelsOf(now, p.tiles)))) return `Would block Entrance ${e.id}`;
+  for (const e of entrances) {
+    if (pairs.filter((x) => x.e === e).length > kept.filter((x) => x.e === e).length) return `Would block Entrance ${e.id}`;
   }
   return null;
 }
@@ -383,7 +414,7 @@ export function applyPlacement(w: World, p: PlacementPreview): boolean {
   for (const f of fresh.removedFacilities) removeFacility(w, f);
   if (fresh.removedSigns.length > 0) w.signs = w.signs.filter((s) => !fresh.removedSigns.includes(s));
   if (fresh.newFacility !== null) createFacility(w, fresh.newFacility, pv.rect);
-  else applyEdits(w.grid, fresh.edits);
+  else applyEdits(w.grid, fresh.edits, pv.tool === "travelator" ? w.nextId++ : -1);
   if (pv.tool === "sign" && pv.signKind !== undefined) addSign(w, pv.tiles[0]!, pv.signKind);
 
   for (const f of w.facilities.values()) refreshAccess(w, f);
@@ -393,21 +424,29 @@ export function applyPlacement(w: World, p: PlacementPreview): boolean {
 }
 
 /**
- * Anyone standing on a tile that is no longer walkable steps to the nearest one joined to an
- * entrance; anyone waiting for a spot that is no longer walkable picks another along their platform.
+ * Anyone on a tile that is blocked, or walkable but cut off from every entrance that leads to a
+ * platform (a pocket a ring of walls has closed), leaves any facility they were at and steps to the
+ * nearest tile that is joined; anyone waiting for a spot that is no longer walkable picks another
+ * along their platform.
  */
 function settlePeople(w: World): void {
   const g = w.grid;
   const p = w.people;
-  const label = regions(g);
-  const entranceRegions = new Set<number>();
-  for (const e of w.map.entrances) for (const l of labelsOf(label, rectTiles(g, e.tiles))) entranceRegions.add(l);
+  const label = currentRegions(g);
+  const platformRegions = new Set<number>();
+  for (const id of activePlatformIds(w))
+    for (const l of labelsOf(label, rectTiles(g, w.map.slots[id - 1]!.platform))) platformRegions.add(l);
+  const safeRegions = new Set<number>();
+  for (const e of w.map.entrances)
+    for (const l of labelsOf(label, rectTiles(g, e.tiles))) if (platformRegions.has(l)) safeRegions.add(l);
   const joined = new Uint8Array(label.length);
-  for (let t = 0; t < label.length; t++) if (entranceRegions.has(label[t]!)) joined[t] = 1;
+  for (let t = 0; t < label.length; t++) if (safeRegions.has(label[t]!)) joined[t] = 1;
 
   for (let i = 0, end = p.end; i < end; i++) {
     if (!p.isAlive(i)) continue;
-    if (!g.isWalkable(Math.floor(p.x[i]!), Math.floor(p.y[i]!))) {
+    if (joined[tileOf(w, i)] !== 1) {
+      const st = p.state[i];
+      if (st === PState.InQueue || st === PState.InFacility || st === PState.Seated) releasePerson(w, i);
       nudgeToWalkable(g, p, i, joined);
       if (!g.isWalkable(Math.floor(p.x[i]!), Math.floor(p.y[i]!))) nudgeToWalkable(g, p, i);
     }
