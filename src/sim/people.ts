@@ -1,3 +1,4 @@
+import { decodeBytesInto, encodeBytes } from "./base64";
 import { ERRAND_COOLDOWN_MIN } from "./constants";
 
 export enum Mode {
@@ -40,6 +41,17 @@ export enum Need {
 }
 
 export const NEED_COUNT = 6;
+
+/** A PeopleStore as saved: every per-slot array, cut to the slots ever handed out. */
+export interface PeopleSave {
+  count: number;
+  freeTop: number;
+  top: number;
+  /** Typed arrays (base64 of their bytes), by field name. */
+  arrays: Record<string, string>;
+  /** String arrays, by field name. */
+  strings: Record<string, string[]>;
+}
 
 /**
  * Struct-of-arrays store of people; slot indices are stable while a person is alive.
@@ -148,6 +160,41 @@ export class PeopleStore {
   forEachAlive(fn: (i: number) => void): void {
     const top = this.top;
     for (let i = 0; i < top; i++) if (this.alive[i]) fn(i);
+  }
+
+  /**
+   * Walks every array field (private ones too), so a field added later is saved without anyone
+   * remembering to list it.
+   */
+  toSave(): PeopleSave {
+    const arrays: Record<string, string> = {};
+    const strings: Record<string, string[]> = {};
+    for (const [name, v] of Object.entries(this)) {
+      if (ArrayBuffer.isView(v)) arrays[name] = encodeBytes(v, (v.byteLength / this.cap) * this.top);
+      else if (Array.isArray(v)) strings[name] = v.slice(0, this.top);
+    }
+    return { count: this.count, freeTop: this.freeTop, top: this.top, arrays, strings };
+  }
+
+  static fromSave(cap: number, s: PeopleSave): PeopleStore {
+    const p = new PeopleStore(cap);
+    if (s.top > cap || s.count > s.top || s.freeTop > s.top) throw new Error("Save does not fit the people store");
+    for (const [name, v] of Object.entries(p)) {
+      if (ArrayBuffer.isView(v)) {
+        const b64 = s.arrays[name];
+        if (b64 === undefined || decodeBytesInto(v, b64) !== (v.byteLength / cap) * s.top) {
+          throw new Error(`Save has a bad people.${name}`);
+        }
+      } else if (Array.isArray(v)) {
+        const xs = s.strings[name];
+        if (xs === undefined || xs.length !== s.top) throw new Error(`Save has a bad people.${name}`);
+        for (let i = 0; i < xs.length; i++) v[i] = xs[i];
+      }
+    }
+    p.count = s.count;
+    p.freeTop = s.freeTop;
+    p.top = s.top;
+    return p;
   }
 
   /** Errand over, met or not: full speed again, and a pause before the next one. */

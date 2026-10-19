@@ -24,7 +24,7 @@ export interface PlacementPreview {
   dir?: Dir;
 }
 
-interface BuildOpts {
+export interface BuildOpts {
   signKind?: Sign["kind"];
   dir?: Dir;
 }
