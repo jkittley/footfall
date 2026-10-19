@@ -190,6 +190,24 @@ Triggers are spread through the airport's growth so later stages add variety whi
 - **Shopping mall (my call on layout, not yet specified by the user):** a two-floor atrium with anchor stores at its ends; the player zones the smaller units, seating and toilets between them and connects the floors. Steady all day, busiest at weekends, late openings and the Christmas weeks. Most visitors come to shop, so retail placement and rent matter most here. End goals are "leave by 17:30 to catch the 17:42", i.e. their departure from the hub.
 - **Sports stadium (user's layout):** a **giant oval** for the stands and pitch, drawn as a fixed shape the player can't build in. **Entry/exit gates sit around the oval.** The player can build shops, toilets, seating, rails and signs in the **ring of space around the oval, which is deliberately tight**, hemmed in by obstacles. Flow: nothing for days, then a match: a slow build-up before kick-off, nearly empty during play, half-time rush to toilets and food, then a sudden flood at full time all heading for trains and the subway at once (the canvas's "Northgate Stadium at full time" board). End goal for fans: "Seat in Block C, kick-off 15:00", and after the match a train home.
 
+## 10b. The city map (user approved the layout, 2026-10-19)
+
+The whole city is laid out from the start; only the parts already unlocked are usable, the rest is shown under a light haze with its name, so the player sees what's coming. Reference mockup: `docs/design/city-layout.html` (Mini Motorways-inspired look: soft water with curved shores and a pale shore band, sage parks with round trees, off-white land, spaced-capitals names along the river; our own palette, not a copy).
+
+- **Ashby River** runs north to south on the east side and widens into the Harbour Mouth at the bottom. Unbuildable, drawn as soft blue with curved banks.
+- **Parks:** St Mary's churchyard (west), Riverside Gardens (between station and river), Harbour Park (south), parkland round the stadium. Unbuildable for now, drawn as sage green with round trees.
+- **Roads:** Harbour Road (south), Market Street (west, up to Exhibition Way), Quay Lane and Airport Road (east bank). Unbuildable; people walk only on pavements. Cars are decoration for now.
+- **Bridges:** a **footbridge** (walkers only) from the station's east side to the airport terminal (the air-rail link), and a **road bridge with a pavement each side** further south to Quay Lane and the stadium.
+- **Harbour Street station (stage 1)** is a terminus: all 18 tracks fan into a **rail throat** on its north side and merge into four lines heading north; trains arrive and leave that way. Its **three entrances**: A Harbour Road (south), B Market Street (west), C the footbridge (east; Quay Lane walkers before the airport opens, air passengers after).
+- **Subway (stage 2)** under the station; its lines run under the river to the airport and the stadium.
+- **Airport (stage 3)** across the river: terminal with check-in, security line and gates, the runway north of it beside Airport Road.
+- **Exhibition centre (stage 4)** north-west beside the rail lines, at the end of Exhibition Way, with its own car park.
+- **Shopping mall (stage 5)** south-west on Harbour Road.
+- **Stadium (stage 6)** south-east over the road bridge, with a car park on its right.
+- Rules stay on the tile grid: water, parks, roads and locked areas are unbuildable tiles; curves are drawn from the map's shapes. Pathfinding only spreads over walkable tiles, so a big city grid costs little until areas open.
+
+**Ideas for later (not planned yet):** a monorail loop linking the station, airport, exhibition centre, mall and stadium (user's idea); buses and taxis using the roads and car parks.
+
 ## 11. Building tools
 
 All area tools work by **click and drag a rectangle on the tile grid**, with a dashed preview, size in tiles and live cost.

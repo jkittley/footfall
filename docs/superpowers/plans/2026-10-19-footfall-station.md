@@ -794,7 +794,34 @@ Added 2026-10-19 at the user's request (spec §9 "Wider islands with a usable ce
 
 ---
 
-### Task 21: Rent by location
+### Task 21: The city map
+
+Added 2026-10-19 at the user's request (spec §10b). Replaces the stand-alone Harbour Street map with the whole city, with only the station usable for now.
+
+**Files:**
+- Create: `src/sim/maps/city.ts` (city shapes and areas), `src/render/drawCity.ts`
+- Modify: `src/sim/grid.ts` (tile kinds), `src/sim/maps/harbourStreet.ts` (station placed inside the city; entrances A/B/C renamed), `src/sim/world.ts`, `src/render/palette.ts` (water, shore, park, tree, road colours), `drawPlan.ts`, `renderer.ts`, `src/ui/framing.ts`, save (`SAVE_VERSION = 4`), map tests
+- Test: `tests/sim/city.test.ts`, `harbourStreet.test.ts`, `save.test.ts`
+
+**Interfaces:**
+- `Tile.Water = 10`, `Tile.Park = 11`, `Tile.Road = 12`, `Tile.Locked = 13`: unwalkable, unbuildable. `Tile.Pavement = 14`: walkable, unbuildable (road-bridge pavements, the footbridge, and short pavement runs leading to each entrance).
+- `interface CityShape { kind: "water" | "park" | "road" | "locked"; name?: string; points: [number, number][] /*tile coords, closed polygon or road centre-line*/; width?: number /*roads*/; area?: string /*locked: which stage*/ }`
+- `const CITY: { w: number; h: number; shapes: CityShape[]; station: { origin: [number, number] } }` — the city at tile scale following the v4 layout; the station's existing 120 × 90 footprint placed at `station.origin`; the rest of the map is Ground (buildable later only where the station grows) or Locked.
+- `rasterise(city): Grid` paints shapes into tiles (polygons filled by tile centre; roads by width), then the station map on top.
+- Entrances: A Harbour Road (south), B Market Street (west), C Footbridge (east). Footbridge tiles are Pavement over Water; a road bridge is Road with Pavement each side.
+- Renderer draws water/park/road/locked shapes as smooth curves from `CITY.shapes` (not tile squares): water soft blue with a faint grid and a pale shore band, parks sage with round trees, roads pale with kerbs and a dashed centre line, the river name in spaced capitals; locked stage areas under a haze with their name and unlock line. Static layer.
+- Rail throat drawn north of the station (decorative).
+- Map tests keep their intent: Entrance C reachable only by building (now across the footbridge), several 2 to 4 tile pinch points on the A→C route (river banks, park edges, roads), all islands clear of obstacles, everything reachable when ground is floor.
+- Camera framing unchanged in spirit (frames the station); panning is limited to the city.
+- `SAVE_VERSION = 4`.
+
+- [ ] **Step 1: Write failing tests** — rasterised water/park/road/locked tiles unwalkable; footbridge walkable; entrances A/B/C on the right edges; station map tests still pass in city coordinates; v3 save refused.
+- [ ] **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS; run the bench (5,000 people) and check fps holds on the bigger map.
+- [ ] **Step 5:** Commit "feat: the city map".
+
+---
+
+### Task 22: Rent by location
 
 Added 2026-10-19 at the user's request (spec §8 "Rent by location").
 
@@ -824,7 +851,7 @@ test("footfallToday and rentMul survive save and load", () => {});
 
 ---
 
-### Task 22: Balance pass and handover
+### Task 23: Balance pass and handover
 
 (Includes the islands, gates and location rent: the autoplay player also opens a gate on an island when the queue at its gate line stays long, and `RENT_FOOTFALL_REF` is tuned so a typical concourse unit sits near ×1.0.)
 

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Footfall city layout</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  body{margin:0;background:#ECE8E1;font-family:'Schibsted Grotesk',system-ui,sans-serif;color:#1E2126}
+  .wrap{max-width:1500px;margin:0 auto;padding:24px 16px 48px}
+  h1{font-size:28px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
+  p.sub{margin:0 0 18px;color:#585D65;font-size:15px;line-height:1.45;max-width:900px}
+  .map{border-radius:18px;overflow:hidden;box-shadow:0 1px 0 #CFC9BE}
+  svg{display:block;width:100%;height:auto}
+  .lbl{font-family:'Schibsted Grotesk',sans-serif;font-weight:700;fill:#1E2126}
+  .small{font-weight:500;fill:#585D65}
+  .caps{font-family:'Schibsted Grotesk',sans-serif;font-weight:600;letter-spacing:.35em;fill:rgba(255,255,255,.85)}
+  .notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:16px}
+  .note{background:#F8F6F2;border:2px solid #CFC9BE;border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.45}
+  .note b{display:block;margin-bottom:2px}
+  .mono{font-family:'IBM Plex Mono',monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Footfall: the whole city (v4: rail throat, exhibition moved, two car parks)</h1>
+<p class="sub">Everything laid out now; only Harbour Street station is open at the start, the rest is hidden under a light haze until its stage unlocks. Rules stay on the tile grid; the curves are just how water and parks are drawn. Numbers in circles are the unlock order.</p>
+
+<div class="map">
+<svg viewBox="0 0 1600 1000" role="img" aria-label="City layout mockup">
+  <defs>
+    <pattern id="wgrid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1"/>
+    </pattern>
+    <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="10" cy="10" r="1" fill="rgba(35,38,43,.10)"/>
+    </pattern>
+    <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#CBC5BA" stroke-width="2"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="160%" height="160%">
+      <feOffset dx="14" dy="14" in="SourceAlpha" result="o"/>
+      <feColorMatrix in="o" type="matrix" values="0 0 0 0 0.14  0 0 0 0 0.15  0 0 0 0 0.17  0 0 0 0.14 0" />
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <g id="tree"><circle cx="0" cy="0" r="11" fill="#A9C98A"/><circle cx="7" cy="6" r="8" fill="#C6DDAE"/><circle cx="4" cy="9" r="11" fill="rgba(35,38,43,.08)"/></g>
+  </defs>
+
+  <!-- land -->
+  <rect width="1600" height="1000" fill="#F4F1EA"/>
+  <rect width="1600" height="1000" fill="url(#dots)"/>
+
+  <!-- estuary + river with shoreline band -->
+  <g>
+    <path d="M905 0 C 930 180, 870 320, 905 470 C 935 600, 980 700, 940 820 C 910 900, 760 930, 620 1000 L 1600 1000 L 1600 940 C 1450 930, 1240 900, 1110 830 C 1060 760, 1070 640, 1040 500 C 1010 360, 1060 180, 1030 0 Z" fill="#FBFAF7"/>
+    <path d="M925 0 C 950 180, 892 320, 925 470 C 955 600, 1000 700, 962 815 C 935 885, 790 925, 660 1000 L 1600 1000 L 1600 962 C 1450 955, 1250 925, 1125 860 C 1045 790, 1050 650, 1020 500 C 990 360, 1040 180, 1010 0 Z" fill="#A9D3EA"/>
+    <path d="M925 0 C 950 180, 892 320, 925 470 C 955 600, 1000 700, 962 815 C 935 885, 790 925, 660 1000 L 1600 1000 L 1600 962 C 1450 955, 1250 925, 1125 860 C 1045 790, 1050 650, 1020 500 C 990 360, 1040 180, 1010 0 Z" fill="url(#wgrid)"/>
+    <text class="caps" font-size="15" transform="translate(975 140) rotate(88)">ASHBY RIVER</text>
+    <text class="caps" font-size="15" x="1220" y="985">HARBOUR MOUTH</text>
+  </g>
+
+  <!-- parks -->
+  <g>
+    <path d="M50 390 C 130 360, 250 370, 290 420 C 320 470, 300 540, 230 560 C 150 580, 70 550, 50 490 Z" fill="#DCE8C8"/>
+    <use href="#tree" x="120" y="430"/><use href="#tree" x="190" y="450"/><use href="#tree" x="150" y="500"/><use href="#tree" x="235" y="500"/>
+    <text class="lbl small" font-size="13" x="95" y="550">St Mary's churchyard</text>
+
+    <path d="M800 470 C 860 460, 890 520, 885 600 C 880 690, 900 760, 860 800 C 820 830, 780 780, 785 700 C 790 620, 760 540, 800 470 Z" fill="#DCE8C8"/>
+    <use href="#tree" x="830" y="520"/><use href="#tree" x="845" y="600"/><use href="#tree" x="820" y="680"/><use href="#tree" x="840" y="760"/>
+    <text class="lbl small" font-size="13" transform="translate(812 590) rotate(-90)">Riverside Gardens</text>
+
+    <path d="M380 860 C 470 830, 600 840, 640 900 C 660 940, 640 990, 600 1000 L 340 1000 C 330 950, 340 890, 380 860 Z" fill="#DCE8C8"/>
+    <use href="#tree" x="430" y="900"/><use href="#tree" x="500" y="930"/><use href="#tree" x="575" y="905"/>
+    <text class="lbl small" font-size="13" x="440" y="975">Harbour Park</text>
+
+    <path d="M1180 600 C 1290 570, 1420 590, 1450 650 C 1480 720, 1470 820, 1400 850 C 1320 880, 1200 860, 1160 800 C 1120 740, 1120 640, 1180 600 Z" fill="#DCE8C8"/>
+    <use href="#tree" x="1190" y="640"/><use href="#tree" x="1430" y="700"/><use href="#tree" x="1180" y="790"/>
+  </g>
+
+  <!-- roads: pale carriageway with a darker kerb outline -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#D9D3C8" stroke-width="22">
+      <path d="M0 610 H 300 C 330 610, 340 620, 340 650 V 1000"/>
+      <path d="M340 610 H 760 C 830 610, 860 660, 910 660"/>
+      <path d="M1070 660 C 1110 660, 1140 640, 1170 600 C 1200 560, 1240 560, 1260 560 H 1600"/>
+      <path d="M1170 600 C 1150 520, 1150 300, 1160 120 V 0"/>
+      <path d="M270 240 H 340"/>
+      <path d="M340 230 V 610"/>
+      <path d="M200 610 V 650"/>
+      <path d="M1260 560 V 620"/>
+    </g>
+    <g stroke="#FBFAF7" stroke-width="16">
+      <path d="M0 610 H 300 C 330 610, 340 620, 340 650 V 1000"/>
+      <path d="M340 610 H 760 C 830 610, 860 660, 910 660"/>
+      <path d="M1070 660 C 1110 660, 1140 640, 1170 600 C 1200 560, 1240 560, 1260 560 H 1600"/>
+      <path d="M1170 600 C 1150 520, 1150 300, 1160 120 V 0"/>
+      <path d="M270 240 H 340"/>
+      <path d="M340 230 V 610"/>
+      <path d="M200 610 V 650"/>
+      <path d="M1260 560 V 620"/>
+    </g>
+    <g stroke="#CBC5BA" stroke-width="1.5" stroke-dasharray="10 10">
+      <path d="M0 610 H 300 C 330 610, 340 620, 340 650 V 1000"/>
+      <path d="M340 610 H 760 C 830 610, 860 660, 910 660"/>
+      <path d="M1070 660 C 1110 660, 1140 640, 1170 600 C 1200 560, 1240 560, 1260 560 H 1600"/>
+      <path d="M1170 600 C 1150 520, 1150 300, 1160 120 V 0"/>
+    </g>
+  </g>
+  <g class="lbl small" font-size="11" letter-spacing=".12em">
+    <text x="20" y="595">HARBOUR ROAD</text>
+    <text x="352" y="420" transform="rotate(90 352 420)">MARKET STREET</text>
+    <text x="1300" y="548">QUAY LANE</text>
+    <text x="1180" y="200" transform="rotate(90 1180 200)">AIRPORT ROAD</text>
+    <text x="275" y="236">EXHIBITION WAY</text>
+  </g>
+  <!-- rail approach: a throat over all 18 tracks merging into four lines heading north -->
+  <g stroke="#CBC5BA" stroke-width="4" fill="none" stroke-linecap="round">
+    <path d="M440 300 C 440 240, 520 200, 560 150"/><path d="M466 300 C 466 240, 530 205, 568 150"/>
+    <path d="M478 300 C 478 240, 540 205, 576 150"/><path d="M504 300 C 504 240, 550 205, 584 150"/>
+    <path d="M516 300 C 516 245, 560 205, 592 150"/><path d="M542 300 C 542 245, 570 205, 600 150"/>
+    <path d="M554 300 C 554 245, 580 205, 608 150"/><path d="M580 300 C 580 245, 592 205, 616 150"/>
+    <path d="M592 300 C 592 250, 604 205, 624 150"/><path d="M618 300 C 618 250, 616 205, 632 150"/>
+    <path d="M630 300 C 630 250, 628 205, 640 150"/><path d="M656 300 C 656 250, 640 205, 648 150"/>
+    <path d="M668 300 C 668 250, 652 205, 656 150"/><path d="M694 300 C 694 250, 664 205, 664 150"/>
+    <path d="M706 300 C 706 250, 676 205, 672 150"/><path d="M732 300 C 732 250, 688 205, 680 150"/>
+    <path d="M744 300 C 744 250, 700 205, 688 150"/><path d="M762 300 C 762 250, 712 205, 696 150"/>
+  </g>
+  <g stroke="#B4AC9E" stroke-width="6" fill="none" stroke-linecap="round">
+    <path d="M572 150 C 560 100, 540 50, 520 0"/><path d="M604 150 C 600 100, 590 50, 580 0"/>
+    <path d="M636 150 C 640 100, 645 50, 650 0"/><path d="M676 150 C 690 100, 705 50, 720 0"/>
+  </g>
+  <text class="lbl small" font-size="11" x="700" y="200">Rail throat (all trains in and out)</text>
+  <text class="lbl small" font-size="11" x="730" y="20">to the north</text>
+
+  <!-- STAGE 4: exhibition centre (north-west, beside the rail lines, hidden) -->
+  <g filter="url(#shadow)" opacity=".55">
+    <rect x="40" y="30" width="330" height="190" rx="10" fill="#F8F6F2" stroke="#23262B" stroke-width="4"/>
+    <rect x="40" y="105" width="330" height="40" fill="#EFEBE4"/>
+    <g fill="#B9C3D6"><rect x="52" y="42" width="66" height="54" rx="6"/><rect x="128" y="42" width="66" height="54" rx="6"/><rect x="204" y="42" width="66" height="54" rx="6"/><rect x="280" y="42" width="78" height="54" rx="6"/>
+    <rect x="52" y="154" width="66" height="54" rx="6"/><rect x="128" y="154" width="66" height="54" rx="6"/><rect x="204" y="154" width="66" height="54" rx="6"/><rect x="280" y="154" width="78" height="54" rx="6"/></g>
+  </g>
+  <text class="lbl" font-size="15" x="45" y="15">Exhibition centre</text>
+  <text class="lbl small" font-size="12" x="180" y="15">Halls either side of a wide corridor · 2 → 12 halls</text>
+  <!-- exhibition car park -->
+  <g filter="url(#shadow)" opacity=".55">
+    <rect x="40" y="250" width="230" height="80" rx="10" fill="#E2DED6" stroke="#CBC5BA" stroke-width="2"/>
+    <g stroke="#FBFAF7" stroke-width="2"><path d="M60 262 V 290 M85 262 V 290 M110 262 V 290 M135 262 V 290 M160 262 V 290 M185 262 V 290 M210 262 V 290 M235 262 V 290"/></g>
+    <g fill="#E5B72A" opacity=".8"><rect x="64" y="268" width="14" height="20" rx="3"/><rect x="139" y="268" width="14" height="20" rx="3"/><rect x="214" y="268" width="14" height="20" rx="3"/></g>
+  </g>
+  <text class="lbl small" font-size="11" x="48" y="322">Exhibition car park</text>
+
+  <!-- STAGE 1: Harbour Street station -->
+  <g filter="url(#shadow)">
+    <rect x="420" y="300" width="350" height="250" rx="10" fill="#F8F6F2" stroke="#23262B" stroke-width="4"/>
+    <g>
+      <g fill="#CBC5BA">
+        <rect x="438" y="312" width="5" height="160"/><rect x="465" y="312" width="5" height="160"/>
+        <rect x="476" y="312" width="5" height="160"/><rect x="503" y="312" width="5" height="160"/>
+        <rect x="514" y="312" width="5" height="160"/><rect x="541" y="312" width="5" height="160"/>
+        <rect x="552" y="312" width="5" height="160"/><rect x="579" y="312" width="5" height="160"/>
+        <rect x="590" y="312" width="5" height="160"/><rect x="617" y="312" width="5" height="160"/>
+        <rect x="628" y="312" width="5" height="160"/><rect x="655" y="312" width="5" height="160"/>
+        <rect x="666" y="312" width="5" height="160"/><rect x="693" y="312" width="5" height="160"/>
+        <rect x="704" y="312" width="5" height="160"/><rect x="731" y="312" width="5" height="160"/>
+        <rect x="742" y="312" width="5" height="160"/><rect x="760" y="312" width="5" height="160"/>
+      </g>
+      <g fill="#FFFFFF" stroke="#23262B" stroke-width="1.5">
+        <rect x="444" y="312" width="20" height="160"/><rect x="482" y="312" width="20" height="160" opacity=".35"/><rect x="520" y="312" width="20" height="160" opacity=".35"/>
+        <rect x="558" y="312" width="20" height="160" opacity=".35"/><rect x="596" y="312" width="20" height="160" opacity=".35"/><rect x="634" y="312" width="20" height="160" opacity=".35"/>
+        <rect x="672" y="312" width="20" height="160" opacity=".35"/><rect x="710" y="312" width="20" height="160" opacity=".35"/><rect x="748" y="312" width="11" height="160" opacity=".35"/>
+      </g>
+      <g fill="#23262B"><rect x="444" y="470" width="4" height="7"/><rect x="451" y="470" width="4" height="7"/><rect x="458" y="470" width="4" height="7"/></g>
+      <circle cx="452" cy="380" r="4" fill="#2F6FDB"/><circle cx="458" cy="420" r="4" fill="#2F6FDB"/><circle cx="450" cy="500" r="4" fill="#2F6FDB"/><circle cx="470" cy="515" r="4" fill="#2F6FDB"/>
+    </g>
+    <rect x="436" y="480" width="200" height="60" fill="#FFFFFF" opacity=".0"/>
+  </g>
+  <text class="lbl" font-size="16" x="425" y="575">Harbour Street station</text>
+  <text class="lbl small" font-size="12" x="425" y="592">Open at the start · 9 island platforms · 2 → 18 platforms · gates at each island</text>
+
+  <!-- STAGE 2: subway (below ground, dashed) -->
+  <g opacity=".7">
+    <rect x="470" y="420" width="250" height="110" rx="10" fill="none" stroke="#E8772E" stroke-width="3" stroke-dasharray="10 7"/>
+    <path d="M720 475 C 850 470, 960 430, 1100 420" fill="none" stroke="#E8772E" stroke-width="3" stroke-dasharray="10 7"/>
+    <path d="M700 530 C 760 620, 980 700, 1180 720" fill="none" stroke="#E8772E" stroke-width="3" stroke-dasharray="10 7"/>
+  </g>
+  <text class="lbl" font-size="13" x="560" y="445" fill="#B25519">Subway (below)</text>
+  <text class="lbl small" font-size="11" x="560" y="460">2 → 6 platforms</text>
+
+  <!-- STAGE 5: shopping mall (south-west, hidden) -->
+  <g filter="url(#shadow)" opacity=".55">
+    <rect x="80" y="650" width="230" height="170" rx="12" fill="#F8F6F2" stroke="#23262B" stroke-width="4"/>
+    <rect x="90" y="700" width="50" height="70" rx="6" fill="#14907F" opacity=".7"/><rect x="250" y="700" width="50" height="70" rx="6" fill="#14907F" opacity=".7"/>
+    <g fill="#14907F" opacity=".35"><rect x="150" y="665" width="20" height="18" rx="3"/><rect x="176" y="665" width="20" height="18" rx="3"/><rect x="202" y="665" width="20" height="18" rx="3"/><rect x="150" y="785" width="20" height="18" rx="3"/><rect x="176" y="785" width="20" height="18" rx="3"/><rect x="202" y="785" width="20" height="18" rx="3"/></g>
+  </g>
+  <text class="lbl" font-size="15" x="85" y="845">Shopping mall</text>
+  <text class="lbl small" font-size="12" x="85" y="862">Two floors, anchor stores at each end · 2 → 8 anchors</text>
+
+  <!-- bridges -->
+  <!-- north: footbridge (air-rail link), narrow, walkers only -->
+  <g>
+    <path d="M770 425 H 1100" stroke="#FBFAF7" stroke-width="14"/>
+    <g fill="none" stroke="#23262B" stroke-width="4" stroke-linecap="round">
+      <path d="M884 413 C 910 405, 1025 405, 1051 413"/><path d="M884 437 C 910 445, 1025 445, 1051 437"/>
+    </g>
+    <g fill="#2F6FDB"><circle cx="930" cy="425" r="3.5"/><circle cx="975" cy="423" r="3.5"/><circle cx="1010" cy="427" r="3.5"/></g>
+  </g>
+  <text class="lbl small" font-size="12" x="880" y="395">Footbridge (air-rail link, walkers only)</text>
+
+  <!-- south: road bridge with a pavement each side -->
+  <g>
+    <rect x="905" y="636" width="170" height="48" fill="#FBFAF7"/>
+    <rect x="905" y="645" width="170" height="30" fill="#D9D3C8"/>
+    <path d="M905 660 H 1075" stroke="#FBFAF7" stroke-width="1.5" stroke-dasharray="10 10"/>
+    <g fill="none" stroke="#23262B" stroke-width="5" stroke-linecap="round">
+      <path d="M908 632 C 935 622, 1045 622, 1072 632"/><path d="M908 688 C 935 698, 1045 698, 1072 688"/>
+    </g>
+    <g fill="#E5B72A"><path d="M950 637 l4 4 -4 4 -4 -4z"/><path d="M1020 683 l4 4 -4 4 -4 -4z"/></g>
+    <g fill="#E8772E"><rect x="960" y="648" width="16" height="9" rx="2"/><rect x="1015" y="663" width="16" height="9" rx="2"/></g>
+  </g>
+  <text class="lbl small" font-size="12" x="905" y="718">Road bridge (pavement both sides)</text>
+  <circle cx="1088" cy="700" r="9" fill="#FFFFFF" stroke="#23262B" stroke-width="2"/><text class="lbl" font-size="10" x="1084.5" y="704">C</text>
+  <text class="lbl small" font-size="11" x="1102" y="704">Entrance C, Quay Lane</text>
+
+  <!-- STAGE 3: airport (east bank, hidden) -->
+  <g opacity=".55">
+    <rect x="1440" y="40" width="70" height="470" rx="6" fill="#CBC5BA"/>
+    <g stroke="#FFFFFF" stroke-width="3" stroke-dasharray="26 22"><path d="M1475 60 V 490"/></g>
+    <rect x="1330" y="180" width="90" height="330" rx="8" fill="#E2DED6"/>
+  </g>
+  <g filter="url(#shadow)" opacity=".6">
+    <rect x="1100" y="240" width="210" height="300" rx="10" fill="#F8F6F2" stroke="#23262B" stroke-width="4"/>
+    <line x1="1205" y1="244" x2="1205" y2="536" stroke="#C4342C" stroke-width="3" stroke-dasharray="6 5"/>
+    <g fill="#23262B"><rect x="1115" y="270" width="40" height="8" rx="3"/><rect x="1115" y="300" width="40" height="8" rx="3"/><rect x="1115" y="330" width="40" height="8" rx="3"/></g>
+    <rect x="1310" y="270" width="24" height="230" fill="#F8F6F2" stroke="#23262B" stroke-width="4"/>
+    <g fill="#7B5CD6" opacity=".8"><path d="M1352 285 l10 -6 l10 6 v12 l-10 6 l-10 -6 Z"/><path d="M1352 345 l10 -6 l10 6 v12 l-10 6 l-10 -6 Z"/><path d="M1352 405 l10 -6 l10 6 v12 l-10 6 l-10 -6 Z"/><path d="M1352 465 l10 -6 l10 6 v12 l-10 6 l-10 -6 Z"/></g>
+  </g>
+  <text class="lbl" font-size="15" x="1105" y="565">Airport</text>
+  <text class="lbl small" font-size="12" x="1105" y="582">Check-in · security line (red) · gates · 2 → 48 gates</text>
+  <text class="lbl small" font-size="12" transform="translate(1530 330) rotate(-90)">Runway</text>
+
+  <!-- stadium car park (right of the stadium) -->
+  <g filter="url(#shadow)" opacity=".55">
+    <rect x="1440" y="625" width="140" height="230" rx="10" fill="#E2DED6" stroke="#CBC5BA" stroke-width="2"/>
+    <g stroke="#FBFAF7" stroke-width="2">
+      <path d="M1452 660 H 1500 M1452 690 H 1500 M1452 720 H 1500 M1452 750 H 1500 M1452 780 H 1500 M1452 810 H 1500"/>
+      <path d="M1520 660 H 1568 M1520 690 H 1568 M1520 720 H 1568 M1520 750 H 1568 M1520 780 H 1568 M1520 810 H 1568"/>
+    </g>
+    <g fill="#2F6FDB" opacity=".7"><rect x="1458" y="665" width="22" height="12" rx="3"/><rect x="1528" y="725" width="22" height="12" rx="3"/><rect x="1458" y="785" width="22" height="12" rx="3"/></g>
+    <g fill="#E8772E" opacity=".7"><rect x="1528" y="665" width="22" height="12" rx="3"/><rect x="1458" y="725" width="22" height="12" rx="3"/></g>
+  </g>
+  <path d="M1510 560 V 625" stroke="#D9D3C8" stroke-width="22" fill="none"/><path d="M1510 560 V 625" stroke="#FBFAF7" stroke-width="16" fill="none"/>
+  <text class="lbl" font-size="14" x="1445" y="875">Car park</text>
+  <text class="lbl small" font-size="11" x="1445" y="891">Stadium drivers (diamonds)</text>
+
+  <!-- STAGE 6: stadium (south-east, hidden) -->
+  <g filter="url(#shadow)" opacity=".55">
+    <ellipse cx="1300" cy="735" rx="115" ry="80" fill="#F8F6F2" stroke="#23262B" stroke-width="6"/>
+    <rect x="1240" y="700" width="120" height="70" rx="6" fill="#C6DDAE" stroke="#FFFFFF" stroke-width="2"/>
+    <g fill="#23262B"><rect x="1293" y="652" width="14" height="6"/><rect x="1293" y="812" width="14" height="6"/><rect x="1182" y="732" width="6" height="14"/><rect x="1412" y="732" width="6" height="14"/></g>
+  </g>
+  <text class="lbl" font-size="15" x="1215" y="875">Stadium</text>
+  <text class="lbl small" font-size="12" x="1215" y="892">Oval, gates around it · 4 → 16 gates</text>
+
+  <!-- unlock order badges -->
+  <g font-family="IBM Plex Mono" font-weight="500" font-size="15" text-anchor="middle">
+    <g transform="translate(410 300)"><circle r="15" fill="#1E2126"/><text y="5" fill="#F8F6F2">1</text></g>
+    <g transform="translate(470 420)"><circle r="15" fill="#E8772E"/><text y="5" fill="#1E2126">2</text></g>
+    <g transform="translate(1100 240)"><circle r="15" fill="#7B5CD6"/><text y="5" fill="#F8F6F2">3</text></g>
+    <g transform="translate(40 30)"><circle r="15" fill="#585D65"/><text y="5" fill="#F8F6F2">4</text></g>
+    <g transform="translate(80 650)"><circle r="15" fill="#14907F"/><text y="5" fill="#F8F6F2">5</text></g>
+    <g transform="translate(1190 670)"><circle r="15" fill="#E5B72A"/><text y="5" fill="#1E2126">6</text></g>
+  </g>
+</svg>
+</div>
+
+<div class="notes">
+  <div class="note"><b>1 · Harbour Street station</b>Open at the start. River and parks become real obstacles you build around; the bridge to Quay Lane (C) is a pinch point.</div>
+  <div class="note"><b>2 · Subway</b>Opens at 10 rail platforms. Dug under the station (dashed), its lines run under the river to the airport and the stadium.</div>
+  <div class="note"><b>3 · Airport</b>Opens at 18 + 6. Across the river, reached by the air-rail link walkway bridge and the subway.</div>
+  <div class="note"><b>4 · Exhibition centre, 5 · Mall, 6 · Stadium</b>Open at 24, 36 and 48 airport gates. Hidden under a haze until then, so the player can see what's coming.</div>
+</div>
+</div>
+</body>
+</html>
