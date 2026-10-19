@@ -1,6 +1,7 @@
 import { START_MINUTE, dayIndex } from "./clock";
 import { GAME_MIN_PER_REAL_SEC, MAX_PEOPLE } from "./constants";
 import { CrowdGrid } from "./crowd";
+import { stepDisruptions, type Disruption } from "./disruptions";
 import {
   DISRUPTION_REFUND_FACTOR,
   FARE_BONUS,
@@ -61,6 +62,8 @@ export interface World {
   day: number;
   /** Keyed by id, in creation order. */
   facilities: Map<number, Facility>;
+  /** The running line closure (if any) and the last few that ended. */
+  disruptions: Disruption[];
   signs: Sign[];
   /** Game minutes since people last looked round for facilities (see stepNeeds). */
   searchClock: number;
@@ -92,6 +95,7 @@ export function createWorld(seed: number): World {
     ledger: new Ledger(STARTING_CASH),
     day: dayIndex(START_MINUTE),
     facilities: new Map(),
+    disruptions: [],
     signs: [],
     searchClock: 0,
     nextId: 1,
@@ -202,8 +206,9 @@ export function step(w: World, dtReal: number): void {
   w.timetable.ensureHorizon(w.minute, activePlatformIds(w), w.rng);
   w.timetable.prune(w.minute - PRUNE_AFTER_MIN);
   // Order of the step functions as later tasks slot in:
-  //   disruptions (Task 14) -> trains -> spawner (Task 8) -> needs (Task 11) -> facilities (Task 10)
+  //   disruptions -> trains -> spawner (Task 8) -> needs (Task 11) -> facilities (Task 10)
   //   -> movement -> crowd -> growth (Task 13) -> economy day rollover (Task 9)
+  stepDisruptions(w, dtReal * GAME_MIN_PER_REAL_SEC);
   stepTrains(w);
   stepSpawner(w, dtReal * GAME_MIN_PER_REAL_SEC);
   stepNeeds(w, dtReal * GAME_MIN_PER_REAL_SEC);

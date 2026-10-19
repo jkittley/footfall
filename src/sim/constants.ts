@@ -63,3 +63,7 @@ export const SHRINK_RATE = 0.7;
 export const SUSTAIN_MIN = 180;
 /** Game minutes after a platform opens or closes before the meter can move another. */
 export const COOLDOWN_MIN = 240;
+/** Average signal failures per game day. */
+export const DISRUPTIONS_PER_DAY = 1.5;
+export const DISRUPTION_MIN_MIN = 60;
+export const DISRUPTION_MAX_MIN = 180;
