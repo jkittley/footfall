@@ -5,7 +5,7 @@ import { nudgeToWalkable } from "./movement";
 import { addSign, refreshSigns, type Sign } from "./needs";
 import { PState } from "./people";
 import { tileOf } from "./walk";
-import { activePlatformIds, walkableTargets, type World } from "./world";
+import { activePlatformIds, waitingSpots, type World } from "./world";
 
 export type ToolId = "floor" | "retail" | "seating" | "toilet" | "wall" | "rail" | "sign" | "travelator" | "remove";
 
@@ -486,7 +486,7 @@ function settlePeople(w: World): void {
     const spot = Number(key.slice(5));
     const [sx, sy] = g.xy(spot);
     if (g.isWalkable(sx, sy)) continue;
-    const tiles = walkableTargets(w, p.goalKey[i]!);
+    const tiles = waitingSpots(w, p.goalKey[i]!);
     p.targetKey[i] = tiles.length > 0 ? `spot:${w.rng.pick(tiles)}` : "";
   }
 }

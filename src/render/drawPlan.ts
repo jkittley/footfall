@@ -573,9 +573,9 @@ function drawEntrances(ctx: CanvasRenderingContext2D, w: World, v: View): void {
 }
 
 /**
- * The parts of the plan that change without the grid: closed platforms dimmed, the unopened half
- * of a painted island, platform labels,
- * retail tenants and countdowns, and signs (they re-point as tenants come and go).
+ * The parts of the plan that change without the grid: closed platforms dimmed, unopened partner
+ * platforms outlined, platform labels, retail tenants and countdowns, and signs (they re-point as
+ * tenants come and go).
  */
 export function drawPlanDynamic(ctx: CanvasRenderingContext2D, w: World, v: View): void {
   drawClosedPlatforms(ctx, w, v);

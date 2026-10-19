@@ -157,6 +157,26 @@ export function walkableTargets(w: World, key: string): number[] {
 }
 
 /**
+ * Where someone headed for `key` stands to wait: for `platform:<id>` the walkable tiles of the outer
+ * column of its half, beside its track, so waiters keep clear of the walkway's middle (crowding is
+ * sampled 3x3, and the partner's alighting stream runs there); otherwise the key's walkable targets.
+ */
+export function waitingSpots(w: World, key: string): number[] {
+  if (key.startsWith("platform:")) {
+    const slot = w.map.slots.find((s) => `platform:${s.id}` === key);
+    if (slot) {
+      const r = slot.platform;
+      const edge = slot.side === "left" ? r.x : r.x + r.w - 1;
+      const g = w.grid;
+      const out: number[] = [];
+      for (let y = r.y; y < r.y + r.h; y++) if (g.isWalkable(edge, y)) out.push(g.idx(edge, y));
+      if (out.length > 0) return out;
+    }
+  }
+  return walkableTargets(w, key);
+}
+
+/**
  * The one place a journey's outcome is recorded; every outcome goes through here.
  * At most once per person: a counted person is ignored.
  */
@@ -178,7 +198,7 @@ export function recordOutcome(w: World, personId: number, onTime: boolean, exclu
 /**
  * Reacts to walkers at their target, changing each one's state or target (or freeing them) so the
  * next step does not report them again: at an exit an arriving passenger leaves, on time if within
- * their deadline; on their platform a passenger waits, strolling to a random spot along it; a
+ * their deadline; on their platform a passenger waits, strolling to a random spot along its track edge; a
  * queuer at their queue spot stands there; someone on an errand reaches its facility and queues or
  * sits, or drops the errand when it is full or no longer meets their need.
  */
@@ -196,7 +216,7 @@ function handleArrivals(w: World, arrived: readonly number[]): void {
       const errand = p.errand[i]!;
       if (!f || errand < 0 || !meetsNeed(f, errand) || !arriveAtFacility(w, f, i)) dropErrand(w, i);
     } else if (key.startsWith("platform:")) {
-      const tiles = walkableTargets(w, key);
+      const tiles = waitingSpots(w, key);
       p.state[i] = PState.Waiting;
       p.targetKey[i] = tiles.length > 0 ? `spot:${w.rng.pick(tiles)}` : "";
     }

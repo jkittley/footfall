@@ -59,8 +59,10 @@ function makeIsland(id: number): IslandDef {
   };
 }
 
+const ISLANDS: IslandDef[] = Array.from({ length: 9 }, (_, i) => makeIsland(i + 1));
+
 function makeSlot(id: number): PlatformSlot {
-  const island = makeIsland(Math.ceil(id / 2));
+  const island = ISLANDS[Math.ceil(id / 2) - 1]!;
   const left = id % 2 === 1;
   const half = left ? island.walkway.x : island.walkway.x + 2;
   return {
@@ -105,7 +107,7 @@ export const HARBOUR_STREET: StationMap = {
   w: 120,
   h: 90,
   startingPlatforms: 2,
-  islands: Array.from({ length: 9 }, (_, i) => makeIsland(i + 1)),
+  islands: ISLANDS,
   slots: Array.from({ length: 18 }, (_, i) => makeSlot(i + 1)),
   entrances: [
     { id: "A", name: "Harbour Road", tiles: { x: 9, y: 79, w: 4, h: 1 }, weight: 3 },
@@ -129,6 +131,7 @@ export function islandRects(island: IslandDef): Rect[] {
   return [island.walkway, island.leftTrack, island.rightTrack, island.foot];
 }
 
+/** Reads one walkway tile: walkways are reserved until painted, so nothing else puts Platform there. */
 export function isIslandPainted(grid: Grid, island: IslandDef): boolean {
   return grid.tile(island.walkway.x, island.walkway.y) === Tile.Platform;
 }
@@ -142,7 +145,7 @@ export function paintIsland(grid: Grid, island: IslandDef): void {
 
 /** Paints the slot's island unless its partner already has; the second of a pair paints nothing. */
 export function paintSlot(grid: Grid, slot: PlatformSlot): void {
-  const island = makeIsland(slot.island);
+  const island = ISLANDS[slot.island - 1]!;
   if (!isIslandPainted(grid, island)) paintIsland(grid, island);
 }
 

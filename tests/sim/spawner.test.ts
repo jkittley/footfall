@@ -268,3 +268,21 @@ test("a passenger who misses the last service heads for an exit, counted once", 
   expect(p.isAlive(i)).toBe(false);
   expect(mine()).toBe(1);
 });
+
+test("across seeds, an unobstructed station stays on time (shared island walkways included)", () => {
+  const rates: number[] = [];
+  for (let seed = 1; seed <= 8; seed++) {
+    const w = createWorld(seed);
+    runMinutes(w, 6 * 60);
+    let onTime = 0;
+    let all = 0;
+    for (const e of w.events) {
+      if (e.kind !== "outcome" || e.excluded) continue;
+      all++;
+      if (e.onTime) onTime++;
+    }
+    rates.push(onTime / all);
+  }
+  for (const r of rates) expect(r).toBeGreaterThanOrEqual(0.965);
+  expect(rates.reduce((a, b) => a + b, 0) / rates.length).toBeGreaterThanOrEqual(0.98);
+});

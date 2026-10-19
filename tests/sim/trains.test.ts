@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createWorld, walkableTargets, type World } from "../../src/sim/world";
+import { createWorld, waitingSpots, walkableTargets, type World } from "../../src/sim/world";
 import { deactivatePlatform } from "../../src/sim/growth";
 import { stepTrains } from "../../src/sim/trains";
 import { PState } from "../../src/sim/people";
@@ -109,7 +109,7 @@ test("a platform-2 passenger waits on the right half and boards from it", () => 
   expect(w.people.isAlive(wrongHalf)).toBe(true);
 });
 
-test("waiting passengers stand on their own platform's half", () => {
+test("waiting passengers stand on the track edge of their own platform's half", () => {
   const w = createWorld(8);
   runMinutes(w, 120);
   let checked = 0;
@@ -118,11 +118,26 @@ test("waiting passengers stand on their own platform's half", () => {
     const key = w.people.targetKey[i]!;
     const s = w.timetable.services.get(w.people.serviceId[i]!);
     if (!key.startsWith("spot:") || !s) continue;
-    const half = new Set(platformTiles(s.platformId).map(([x, y]) => w.grid.idx(x, y)));
-    expect(half.has(Number(key.slice(5)))).toBe(true);
+    const slot = w.map.slots[s.platformId - 1]!;
+    const edge = slot.side === "left" ? slot.platform.x : slot.platform.x + slot.platform.w - 1;
+    const [x, y] = w.grid.xy(Number(key.slice(5)));
+    expect(x).toBe(edge);
+    expect(y).toBeGreaterThanOrEqual(slot.platform.y);
+    expect(y).toBeLessThan(slot.platform.y + slot.platform.h);
     checked++;
   }
   expect(checked).toBeGreaterThan(0);
+});
+
+test("waiting spots are the walkable outer column beside each platform's track", () => {
+  const w = createWorld(2);
+  for (const id of [1, 2]) {
+    const slot = w.map.slots[id - 1]!;
+    const spots = waitingSpots(w, `platform:${id}`).map((t) => w.grid.xy(t));
+    expect(spots).toHaveLength(slot.platform.h);
+    // Each spot is one step from the platform's own track.
+    for (const [x] of spots) expect(Math.abs(x - slot.track.x)).toBe(1);
+  }
 });
 
 test("deactivating platform 2 leaves platform 1 boarding normally", () => {
