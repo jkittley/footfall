@@ -772,7 +772,29 @@ test("an unobstructed station still has a high on-time rate with 2 gates per isl
 
 ---
 
-### Task 20: Rent by location
+### Task 20: Wider islands with a usable centre
+
+Added 2026-10-19 at the user's request (spec §9 "Wider islands with a usable centre").
+
+**Files:**
+- Modify: `src/sim/maps/harbourStreet.ts` (ISLANDS geometry), `src/sim/world.ts` (waitingSpots), `src/sim/build.ts` (platform rules), `src/sim/save.ts` (`SAVE_VERSION = 3`), renderer platform/label drawing, any test coordinates tied to island columns
+- Test: `harbourStreet.test.ts`, `build.test.ts`, `trains.test.ts`, `gates.test.ts`, `save.test.ts`
+
+**Interfaces:**
+- Island `i` at `x0 = 8 + 8(i − 1)`: left track `x0`, walkway `x0+1..x0+5` (5 wide), right track `x0+6`, gap `x0+7`. Gate line = the walkway's southernmost row (5 tiles); an island opens with gates at `x0+2` and `x0+4` (one per side) and the other 3 closed, up to 5 gates.
+- Slot halves: left platform = cols `x0+1..x0+2`, right platform = cols `x0+4..x0+5`; col `x0+3` belongs to neither (shared centre).
+- Edge rows `x0+1` and `x0+5` (every walkway row except the gate row) are platform edges: never buildable, reason "Keep the platform edge clear".
+- Centre cols `x0+2..x0+4` accept retail, seating, toilet, wall, rail, sign (not floor, not travelator), subject to the usual checks.
+- Waiting spots stay the edge column of each half; boarding accepts the whole half.
+- `SAVE_VERSION = 3` (geometry change).
+
+- [ ] **Step 1: Write failing tests** — island geometry (5-wide walkway, stride 8, all clear of obstacles, map tests still pass); a seat on an island centre is allowed, a seat on an edge row refused with "Keep the platform edge clear"; a build that blocks the whole centre and both edges' access refused with "Would cut off Platform N"; gate line has 5 tiles; v2 save refused; multi-seed on-time bars unchanged.
+- [ ] **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS.
+- [ ] **Step 5:** Commit "feat: wider islands with a usable centre".
+
+---
+
+### Task 21: Rent by location
 
 Added 2026-10-19 at the user's request (spec §8 "Rent by location").
 
@@ -802,7 +824,7 @@ test("footfallToday and rentMul survive save and load", () => {});
 
 ---
 
-### Task 21: Balance pass and handover
+### Task 22: Balance pass and handover
 
 (Includes the islands, gates and location rent: the autoplay player also opens a gate on an island when the queue at its gate line stays long, and `RENT_FOOTFALL_REF` is tuned so a typical concourse unit sits near ×1.0.)
 
