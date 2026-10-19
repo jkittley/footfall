@@ -61,13 +61,15 @@ export interface Facility {
   /** Minute a tenant moves in, -1 if it has one (or never takes one). */
   tenantAt: number;
   footfall: { commuter: number; leisure: number };
-  /** People already counted in `footfall` while the unit is to let. */
+  /** Serials of people already counted in `footfall` while the unit is to let. */
   footfallSeen: Set<number>;
-  /** Distinct people within FOOTFALL_RADIUS since midnight, let or to let; cleared at each midnight. */
+  /** Serials of the distinct people within FOOTFALL_RADIUS since midnight, let or to let; cleared at each midnight. */
   passedSeen: Set<number>;
   /** People counted in `passedSeen` today. */
   footfallToday: number;
-  /** People who passed on the day before the last midnight; -1 until the unit's first midnight. */
+  /** Minute the unit was built; its first, partial day sets no rent multiplier. */
+  builtAt: number;
+  /** People who passed in the last full day; -1 until the unit has had one. */
   footfallYesterday: number;
   /** Scales the rent share of every sale today, set at midnight from yesterday's passers-by. */
   rentMul: number;
@@ -189,6 +191,7 @@ export function createFacility(w: World, kind: FacilityKind, rect: Rect): Facili
     footfallSeen: new Set(),
     passedSeen: new Set(),
     footfallToday: 0,
+    builtAt: w.minute,
     footfallYesterday: -1,
     rentMul: 1,
     queue: [],
@@ -350,8 +353,9 @@ function countFootfall(w: World, f: Facility, buckets: Buckets): void {
       const here = buckets.get(ty * gw + tx);
       if (!here) continue;
       for (const i of here) {
-        const newToday = !f.passedSeen.has(i);
-        const newToLet = toLet && !f.footfallSeen.has(i);
+        const sid = p.serial[i]!;
+        const newToday = !f.passedSeen.has(sid);
+        const newToLet = toLet && !f.footfallSeen.has(sid);
         if (!newToday && !newToLet) continue;
         const px = p.x[i]!;
         const py = p.y[i]!;
@@ -359,11 +363,11 @@ function countFootfall(w: World, f: Facility, buckets: Buckets): void {
         const ddy = Math.max(r.y - py, 0, py - (r.y + r.h));
         if (ddx * ddx + ddy * ddy > R * R) continue;
         if (newToday) {
-          f.passedSeen.add(i);
+          f.passedSeen.add(sid);
           f.footfallToday++;
         }
         if (newToLet) {
-          f.footfallSeen.add(i);
+          f.footfallSeen.add(sid);
           if (p.leisure[i]) f.footfall.leisure++;
           else f.footfall.commuter++;
         }
@@ -373,7 +377,12 @@ function countFootfall(w: World, f: Facility, buckets: Buckets): void {
 }
 
 /** At midnight: rent for the new day follows yesterday's passers-by, then the count starts again. */
-export function closeFootfallDay(f: Facility): void {
+export function closeFootfallDay(f: Facility, dayStart: number): void {
+  if (f.builtAt > dayStart) {
+    f.footfallToday = 0;
+    f.passedSeen.clear();
+    return;
+  }
   f.rentMul = Math.min(RENT_MUL_MAX, Math.max(RENT_MUL_MIN, f.footfallToday / RENT_FOOTFALL_REF));
   f.footfallYesterday = f.footfallToday;
   f.footfallToday = 0;
@@ -462,7 +471,9 @@ function stepSeats(w: World, f: Facility): void {
  */
 export function stepFacilities(w: World, dtMin: number): void {
   const minuteTick = Math.floor(w.minute) !== Math.floor(w.minute - dtMin);
-  const buckets = minuteTick ? bucketPassers(w) : null;
+  let hasRetail = false;
+  for (const f of w.facilities.values()) if (f.kind === FacilityKind.Retail) hasRetail = true;
+  const buckets = minuteTick && hasRetail ? bucketPassers(w) : null;
   for (const f of w.facilities.values()) {
     if (f.kind === FacilityKind.Retail) {
       if (f.tenant === Tenant.None && f.tenantAt >= 0 && w.minute >= f.tenantAt) moveIn(w, f);

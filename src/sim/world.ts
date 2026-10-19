@@ -267,7 +267,7 @@ function rollDays(w: World): void {
     w.stats = { movedToday: 0, onTimeToday: 0, missedToday: 0 };
     for (const f of w.facilities.values()) {
       f.takingsToday = 0;
-      if (f.kind === FacilityKind.Retail) closeFootfallDay(f);
+      if (f.kind === FacilityKind.Retail) closeFootfallDay(f, w.day * 1440);
     }
     w.day++;
   }

@@ -49,6 +49,8 @@ export interface PeopleSave {
   top: number;
   /** Typed arrays (base64 of their bytes), by field name. */
   arrays: Record<string, string>;
+  /** Next serial to hand out; absent in saves from before serials existed. */
+  nextSerial?: number;
   /** String arrays, by field name. */
   strings: Record<string, string[]>;
 }
@@ -92,7 +94,10 @@ export class PeopleStore {
   drift: Int32Array;
   timer: Float32Array;
   counted: Uint8Array;
+  /** Unique per person for the life of the game; unlike the slot, never reused. */
+  serial: Float64Array;
 
+  private nextSerial = 0;
   private readonly alive: Uint8Array;
   private readonly freeList: Int32Array;
   private freeTop = 0;
@@ -124,6 +129,7 @@ export class PeopleStore {
     this.drift = new Int32Array(cap);
     this.timer = new Float32Array(cap);
     this.counted = new Uint8Array(cap);
+    this.serial = new Float64Array(cap);
     this.alive = new Uint8Array(cap);
     this.freeList = new Int32Array(cap);
   }
@@ -133,6 +139,7 @@ export class PeopleStore {
     if (this.count >= this.cap) throw new RangeError(`PeopleStore full (cap ${this.cap})`);
     const i = this.freeTop > 0 ? this.freeList[--this.freeTop]! : this.top++;
     this.reset(i);
+    this.serial[i] = this.nextSerial++;
     this.alive[i] = 1;
     this.count++;
     return i;
@@ -173,7 +180,14 @@ export class PeopleStore {
       if (ArrayBuffer.isView(v)) arrays[name] = encodeBytes(v, (v.byteLength / this.cap) * this.top);
       else if (Array.isArray(v)) strings[name] = v.slice(0, this.top);
     }
-    return { count: this.count, freeTop: this.freeTop, top: this.top, arrays, strings };
+    return {
+      count: this.count,
+      freeTop: this.freeTop,
+      top: this.top,
+      arrays,
+      strings,
+      nextSerial: this.nextSerial,
+    };
   }
 
   static fromSave(cap: number, s: PeopleSave): PeopleStore {
@@ -190,6 +204,11 @@ export class PeopleStore {
     for (const [name, v] of Object.entries(p)) {
       if (ArrayBuffer.isView(v)) {
         const b64 = s.arrays[name];
+        if (name === "serial" && b64 === undefined) {
+          // Saved before serials: the slot id was the identity, so keep it.
+          for (let i = 0; i < s.top; i++) p.serial[i] = i;
+          continue;
+        }
         if (decodeBytesInto(v, b64) !== (v.byteLength / cap) * s.top) {
           throw new Error(`Corrupt save: people.${name}`);
         }
@@ -204,6 +223,10 @@ export class PeopleStore {
     p.count = s.count;
     p.freeTop = s.freeTop;
     p.top = s.top;
+    if (s.nextSerial !== undefined && !(Number.isInteger(s.nextSerial) && s.nextSerial >= 0)) {
+      throw new Error("Corrupt save: people.nextSerial");
+    }
+    p.nextSerial = s.nextSerial ?? s.top;
     return p;
   }
 

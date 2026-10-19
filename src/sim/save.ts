@@ -18,8 +18,9 @@ export const SAVE_VERSION = 4;
 /** The only map so far; its layout is constant data, so a save names it rather than storing it. */
 const MAP_ID = "harbour-street";
 
-type FacilitySave = Omit<Facility, "footfallSeen" | "passedSeen" | "footfallToday" | "footfallYesterday" | "rentMul"> &
-  Partial<Pick<Facility, "footfallToday" | "footfallYesterday" | "rentMul">> & { footfallSeen: number[]; passedSeen?: number[] };
+type RentFields = "footfallToday" | "footfallYesterday" | "rentMul" | "builtAt";
+type FacilitySave = Omit<Facility, "footfallSeen" | "passedSeen" | RentFields> &
+  Partial<Pick<Facility, RentFields>> & { footfallSeen: number[]; passedSeen?: number[] };
 
 /**
  * Everything that decides future steps. Not saved: the route fields and crowd counts (rebuilt from
@@ -172,6 +173,7 @@ export function deserialise(json: string): World {
       footfallSeen: new Set(f.footfallSeen),
       passedSeen: new Set(f.passedSeen ?? []),
       footfallToday: f.footfallToday ?? 0,
+      builtAt: f.builtAt ?? 0,
       footfallYesterday: f.footfallYesterday ?? -1,
       rentMul: f.rentMul ?? 1,
     });

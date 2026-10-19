@@ -283,3 +283,19 @@ test("a v4 save without the rent fields loads with defaults, and out-of-range on
   raw.facilities[0].footfallToday = -1;
   expect(() => deserialise(JSON.stringify(raw))).toThrow("Corrupt save");
 });
+
+test("person serials survive a save, and a save without them falls back to slot ids", () => {
+  const a = furnishedWorld(9);
+  runMinutes(a, MON_0815 - START_MINUTE);
+  const serials = [...a.people.serial.slice(0, a.people.end)];
+  const b = deserialise(serialise(a));
+  expect([...b.people.serial.slice(0, b.people.end)]).toEqual(serials);
+  const next = b.people.alloc();
+  expect(serials).not.toContain(b.people.serial[next]);
+  const raw = JSON.parse(serialise(a));
+  delete raw.people.arrays.serial;
+  delete raw.people.nextSerial;
+  const c = deserialise(JSON.stringify(raw));
+  expect(c.people.serial[0]).toBe(0);
+  expect(c.people.serial[c.people.alloc()]).toBeGreaterThanOrEqual(c.people.end - 1);
+});

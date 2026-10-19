@@ -25,7 +25,7 @@ import { NEED_COUNT, Need, PState } from "../../src/sim/people";
 import { Rng } from "../../src/sim/rng";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
 import { OX, OY, at, runMinutes } from "./helpers";
-import { RENT_FOOTFALL_REF, RENT_MUL_MAX, RENT_MUL_MIN } from "../../src/sim/constants";
+import { FOOTFALL_RADIUS, RENT_FOOTFALL_REF, RENT_MUL_MAX, RENT_MUL_MIN } from "../../src/sim/constants";
 
 // A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
 const ISLAND: Rect = at(60, 30, 20, 20);
@@ -349,15 +349,15 @@ test("a queuer leaves to make their deadline", () => {
 const BUSY: Rect = at(68, 40, 2, 2);
 const QUIET: Rect = at(62, 32, 2, 2);
 
-/** Runs to the next midnight, with `crowd` still people parked beside `rect` first so they are counted. */
+/** Parks `crowd` seated people beside `rect`, then runs two midnights: the unit's first, partial day sets no multiplier, the second counts them all. */
 function passDay(w: World, rect: Rect, crowd: number): void {
   for (let n = 0; n < crowd; n++) {
     const i = person(w, rect.x - OX + 3, rect.y - OY + (n % 2), false);
     w.people.state[i] = PState.Seated;
   }
   const day = w.day;
-  for (let n = 0; n < 1440 * 2 && w.day === day; n++) runMinutes(w, 1);
-  expect(w.day).toBe(day + 1);
+  for (let n = 0; n < 1440 * 3 && w.day < day + 2; n++) runMinutes(w, 1);
+  expect(w.day).toBe(day + 2);
 }
 
 test("a unit on the main path ends the day with a higher rent multiplier than one in a corner", () => {
@@ -397,4 +397,67 @@ test("a let unit counts passers-by without disturbing a to-let unit's tenant foo
   runMinutes(w, 2);
   expect(f.footfallToday).toBe(1);
   expect(f.footfall.leisure).toBe(1);
+});
+
+/** A parked person at an absolute position (tile units), in `state`. */
+function parked(w: World, x: number, y: number, state = PState.Seated): number {
+  const i = person(w, 0, 0);
+  w.people.x[i] = x;
+  w.people.y[i] = y;
+  w.people.state[i] = state;
+  return i;
+}
+
+test("only people within FOOTFALL_RADIUS of the unit count", () => {
+  const w = islandWorld();
+  const f = foodUnit(w);
+  const right = UNIT.x + UNIT.w;
+  parked(w, right + FOOTFALL_RADIUS - 0.1, UNIT.y + 0.5);
+  parked(w, right + FOOTFALL_RADIUS + 0.1, UNIT.y + 0.5);
+  parked(w, UNIT.x - FOOTFALL_RADIUS - 0.1, UNIT.y + 0.5);
+  runMinutes(w, 2);
+  expect(f.footfallToday).toBe(1);
+});
+
+test("people in a state that is not passing by do not count", () => {
+  const w = islandWorld();
+  const f = foodUnit(w);
+  parked(w, UNIT.x - 1, UNIT.y, PState.InFacility);
+  parked(w, UNIT.x - 1, UNIT.y, PState.Free);
+  parked(w, UNIT.x - 1, UNIT.y, PState.Walking);
+  runMinutes(w, 2);
+  expect(f.footfallToday).toBe(1);
+});
+
+test("a let unit counts passers-by but not tenant-choice footfall", () => {
+  const w = islandWorld();
+  const f = foodUnit(w);
+  parked(w, UNIT.x - 1, UNIT.y, PState.Walking);
+  runMinutes(w, 2);
+  expect(f.footfallToday).toBe(1);
+  expect(f.footfall).toEqual({ commuter: 0, leisure: 0 });
+  expect(f.footfallSeen.size).toBe(0);
+});
+
+test("a person who leaves and a new one in the same slot are two different passers-by", () => {
+  const w = islandWorld();
+  const f = foodUnit(w);
+  const first = parked(w, UNIT.x - 1, UNIT.y);
+  runMinutes(w, 2);
+  w.people.free(first);
+  const second = parked(w, UNIT.x - 1, UNIT.y);
+  expect(second).toBe(first);
+  runMinutes(w, 2);
+  expect(f.footfallToday).toBe(2);
+});
+
+test("a unit's first, partial day sets no rent multiplier", () => {
+  const w = islandWorld();
+  const f = foodUnit(w);
+  const day = w.day;
+  parked(w, UNIT.x - 1, UNIT.y);
+  for (let n = 0; n < 1440 * 2 && w.day === day; n++) runMinutes(w, 1);
+  expect(f.rentMul).toBe(1);
+  expect(f.footfallYesterday).toBe(-1);
+  expect(f.footfallToday).toBe(0);
 });
