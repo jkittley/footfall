@@ -811,6 +811,7 @@ Added 2026-10-19 at the user's request (spec §10b). Replaces the stand-alone Ha
 - Entrances: A Harbour Road (south), B Market Street (west), C Footbridge (east). Footbridge tiles are Pavement over Water; a road bridge is Road with Pavement each side.
 - Renderer draws water/park/road/locked shapes as smooth curves from `CITY.shapes` (not tile squares): water soft blue with a faint grid and a pale shore band, parks sage with round trees, roads pale with kerbs and a dashed centre line, the river name in spaced capitals; locked stage areas under a haze with their name and unlock line. Static layer.
 - Rail throat drawn north of the station (decorative).
+- The bus depot site (spec §10b) across Harbour Road from the station is a Locked area labelled "Bus depot" with "Opens at 6 platforms"; the haze and label follow the other locked areas.
 - Map tests keep their intent: Entrance C reachable only by building (now across the footbridge), several 2 to 4 tile pinch points on the A→C route (river banks, park edges, roads), all islands clear of obstacles, everything reachable when ground is floor.
 - Camera framing unchanged in spirit (frames the station); panning is limited to the city.
 - `SAVE_VERSION = 4`.

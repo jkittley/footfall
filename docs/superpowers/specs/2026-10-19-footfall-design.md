@@ -206,6 +206,8 @@ The whole city is laid out from the start; only the parts already unlocked are u
 - **Stadium (stage 6)** south-east over the road bridge, with a car park on its right.
 - Rules stay on the tile grid: water, parks, roads and locked areas are unbuildable tiles; curves are drawn from the map's shapes. Pathfinding only spreads over walkable tiles, so a big city grid costs little until areas open.
 
+- **Bus depot (user's idea, added 2026-10-19; opens at 6 rail platforms, before the subway):** across Harbour Road from the station, between the mall and Harbour Park. Bus bays with their own timetable (more bays open as it does well, like platforms); shuttle routes between the station, airport, exhibition centre, mall and stadium, plus routes out of the city. Bus passengers are **teal squares** (fill rules as for the other shapes). People crossing between depot and station use the pavements and a crossing on Harbour Road, a natural pinch point. Shuttles are the release valve on match and exhibition days. Built in its own plan after the station plan; the city map reserves and labels its site from the start.
+
 **Ideas for later (not planned yet):** a monorail loop linking the station, airport, exhibition centre, mall and stadium (user's idea); buses and taxis using the roads and car parks.
 
 ## 11. Building tools
