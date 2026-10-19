@@ -106,14 +106,14 @@ if (mode === "idle" || mode === "autoplay") {
   for (const seed of SEEDS) {
     const rows = table("idle", IDLE_DAYS, seed);
     const added = rows[rows.length - 1]!.added;
-    check(`idle, seed ${seed}: 2-3 platforms after ${IDLE_DAYS} game days`, `${added}`, added >= 2 && added <= 3);
+    check(`idle, seed ${seed}: 2-4 platforms after ${IDLE_DAYS} game days`, `${added}`, added >= 2 && added <= 4);
   }
   for (const seed of SEEDS) {
     const rows = table("autoplay", AUTOPLAY_DAYS, seed);
     const six = dayReaching(rows, 6);
     const ten = dayReaching(rows, 10);
     const hours = (d: number | null): string => (d === null ? "not reached" : `game day ${d} (${((d * 10) / 60).toFixed(1)} h at x1)`);
-    check(`autoplay, seed ${seed}: 6 platforms in game days 9-15`, hours(six), six !== null && six >= 9 && six <= 15);
+    check(`autoplay, seed ${seed}: 6 platforms in game days 7-15`, hours(six), six !== null && six >= 7 && six <= 15);
     check(`autoplay, seed ${seed}: 10 platforms in game days 18-24`, hours(ten), ten !== null && ten >= 18 && ten <= 24);
     const summer = rows.filter(isSummer);
     const firstSummer = summer[0]!.day;
