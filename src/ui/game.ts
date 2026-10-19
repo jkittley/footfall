@@ -11,7 +11,7 @@ import { Input } from "./input";
 import { Inspector, ShopPanel, Tip } from "./inspector";
 import { planFrame, type Speed } from "./loop";
 import { clearSave, loadSave, stashCorruptSave, writeSave } from "./storage";
-import { stationBounds } from "./framing";
+import { framingInsets, stationBounds } from "./framing";
 import { ToolRail } from "./toolRail";
 
 /** The first view's zoom range, so people are clearly visible. */
@@ -19,8 +19,6 @@ const FRAME_MIN_ZOOM = 1.5;
 const FRAME_MAX_ZOOM = 2;
 /** Tiles of ground round the station in the first view. */
 const FRAME_PAD_TILES = 2;
-/** Gap (CSS px) kept between the HUD and the framed station, and at the free screen edges. */
-const HUD_GAP = 16;
 
 function newSeed(): number {
   return Math.floor(Math.random() * 2 ** 31);
@@ -107,7 +105,7 @@ export function startGame(canvas: HTMLCanvasElement): void {
     },
     escape: () => {
       if (hud.confirmOpen) hud.closeConfirm();
-      else if (hud.menuOpen) hud.toggleMenu(false);
+      else if (hud.menuOpen) hud.closeMenu();
       else if (rail.tool) rail.select(null);
       else if (shop.isOpen) shop.close();
       else inspector.close();
@@ -118,7 +116,8 @@ export function startGame(canvas: HTMLCanvasElement): void {
 
   /** The camera may pan the map out from under the rail and the HUD. */
   function updateInsets(): void {
-    renderer.camera.setInsets(rail.right() + HUD_GAP, hud.bottom() + HUD_GAP, HUD_GAP, HUD_GAP);
+    const ins = framingInsets(rail.right(), hud.bottom());
+    renderer.camera.setInsets(ins.left, ins.top, ins.right, ins.bottom);
   }
   renderer.initialFrame = (cam, world) => {
     updateInsets();

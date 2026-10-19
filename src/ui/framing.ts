@@ -21,3 +21,17 @@ export function stationBounds(g: Grid, floorOnly = false): Rect | null {
   }
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
+
+/** Gap (CSS px) kept between the HUD and the station, and at the free screen edges. */
+export const HUD_GAP = 16;
+/**
+ * Extra room (CSS px) left of the rail for a side entrance's name pill ("Entrance B · Market
+ * Place", about 190px), which is drawn outside the map's left edge: with the camera's 4-tile
+ * margin this keeps it clear of the rail when the station sits at that edge.
+ */
+const SIDE_PILL_ROOM_PX = 120;
+
+/** The screen insets (CSS px) the camera frames inside and may pan the map out from under. */
+export function framingInsets(railRight: number, hudBottom: number): { left: number; top: number; right: number; bottom: number } {
+  return { left: railRight + HUD_GAP + SIDE_PILL_ROOM_PX, top: hudBottom + HUD_GAP, right: HUD_GAP, bottom: HUD_GAP };
+}

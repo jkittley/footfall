@@ -47,7 +47,6 @@ export class Hud {
   private readonly cancelButton: HTMLButtonElement;
   private upkeepKey = "";
   private readonly panels: HTMLElement[];
-  private returnFocus: HTMLElement | null = null;
 
   constructor(root: HTMLElement, private readonly actions: HudActions) {
     const score = el("div", "hud-score panel");
@@ -202,16 +201,21 @@ export class Hud {
     this.menuButton.setAttribute("aria-expanded", String(open));
   }
 
+  /** Esc on an open menu: close it and hand focus back to its button. */
+  closeMenu(): void {
+    this.toggleMenu(false);
+    this.menuButton.focus();
+  }
+
   openConfirm(): void {
-    this.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.scrim.hidden = false;
     this.cancelButton.focus();
   }
 
+  /** Closed by Cancel, Esc, the backdrop or Start again; focus goes back to the Menu button it was opened from. */
   closeConfirm(): void {
     if (this.scrim.hidden) return;
     this.scrim.hidden = true;
-    this.returnFocus?.focus();
-    this.returnFocus = null;
+    this.menuButton.focus();
   }
 }

@@ -42,3 +42,17 @@ export function rgba([r, g, b, a]: Rgba, alphaMul = 1): string {
 export function hexToUnit(h: string): [number, number, number] {
   return [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
 }
+
+/** WCAG relative luminance of "#RRGGBB". */
+function luminance(h: string): number {
+  const lin = (c: number): number => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const [r, g, b] = hexToUnit(h);
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/** WCAG contrast ratio between two "#RRGGBB" colours (1 to 21). */
+export function contrastRatio(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
