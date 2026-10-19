@@ -11,7 +11,11 @@ export interface IslandDef {
   gateLine: Rect;
 }
 
-/** One platform: its island's left or right track, and its half of the walkway (its own waiting area). */
+/**
+ * One platform: its island's left or right track, and its half of the walkway (its own waiting
+ * area): the edge column beside its track and the column in from it. The walkway's middle column
+ * belongs to neither half.
+ */
 export interface PlatformSlot {
   id: number;
   island: number;
@@ -50,15 +54,15 @@ const PLATFORM_LEN = 30;
 const CONCOURSE_TOP = PLATFORM_TOP + PLATFORM_LEN;
 
 function makeIsland(id: number): IslandDef {
-  const x0 = 8 + 7 * (id - 1);
+  const x0 = 8 + 8 * (id - 1);
   return {
     id,
-    walkway: { x: x0 + 1, y: PLATFORM_TOP, w: 4, h: PLATFORM_LEN },
+    walkway: { x: x0 + 1, y: PLATFORM_TOP, w: 5, h: PLATFORM_LEN },
     leftTrack: { x: x0, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
-    rightTrack: { x: x0 + 5, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
+    rightTrack: { x: x0 + 6, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
     // Spans the gap column too, so neighbouring aprons join into one concourse.
-    foot: { x: x0, y: CONCOURSE_TOP, w: 7, h: 2 },
-    gateLine: { x: x0 + 1, y: CONCOURSE_TOP - 1, w: 4, h: 1 },
+    foot: { x: x0, y: CONCOURSE_TOP, w: 8, h: 2 },
+    gateLine: { x: x0 + 1, y: CONCOURSE_TOP - 1, w: 5, h: 1 },
   };
 }
 
@@ -67,7 +71,7 @@ const ISLANDS: IslandDef[] = Array.from({ length: 9 }, (_, i) => makeIsland(i + 
 function makeSlot(id: number): PlatformSlot {
   const island = ISLANDS[Math.ceil(id / 2) - 1]!;
   const left = id % 2 === 1;
-  const half = left ? island.walkway.x : island.walkway.x + 2;
+  const half = left ? island.walkway.x : island.walkway.x + island.walkway.w - 2;
   return {
     id,
     island: island.id,
@@ -78,7 +82,7 @@ function makeSlot(id: number): PlatformSlot {
   };
 }
 
-// The island field (every island's tracks, walkway and foot, x 8..70) stays obstacle-free so
+// The island field (every island's tracks, walkway and foot, x 8..79) stays obstacle-free so
 // platforms can be painted later. Rows 22-23 are a Ground buffer between the
 // track bed and the platform tops. Pinch points sit east of the field (x 84..95)
 // and at the canal crossing: the route to Quay Lane must use each of them.
@@ -134,6 +138,25 @@ export function islandRects(island: IslandDef): Rect[] {
   return [island.walkway, island.leftTrack, island.rightTrack, island.foot];
 }
 
+/** The island whose walkway, above its gate row, holds (x, y); undefined if none. */
+function walkwayIslandAt(map: StationMap, x: number, y: number): IslandDef | undefined {
+  return map.islands.find((isl) => {
+    const r = isl.walkway;
+    return x >= r.x && x < r.x + r.w && y >= r.y && y < isl.gateLine.y;
+  });
+}
+
+/** A walkway's edge column beside a track, above the gate row: where people wait and board, so nothing is built there. */
+export function isPlatformEdge(map: StationMap, x: number, y: number): boolean {
+  const isl = walkwayIslandAt(map, x, y);
+  return isl !== undefined && (x === isl.walkway.x || x === isl.walkway.x + isl.walkway.w - 1);
+}
+
+/** A walkway's middle columns, above the gate row: where an island takes seating, shops and the like. */
+export function isIslandCentre(map: StationMap, x: number, y: number): boolean {
+  return walkwayIslandAt(map, x, y) !== undefined && !isPlatformEdge(map, x, y);
+}
+
 /** Reads one walkway tile: walkways are reserved until painted, so nothing else puts Platform there. */
 export function isIslandPainted(grid: Grid, island: IslandDef): boolean {
   return grid.tile(island.walkway.x, island.walkway.y) === Tile.Platform;
@@ -145,8 +168,8 @@ export function paintIsland(grid: Grid, island: IslandDef): void {
   fill(grid, island.walkway, Tile.Platform);
   fill(grid, island.foot, Tile.Floor);
   const g = island.gateLine;
-  // The two middle gates open; the outer slots are closed off until the player buys gates there.
-  for (let x = g.x; x < g.x + g.w; x++) grid.setTile(x, g.y, x === g.x || x === g.x + g.w - 1 ? Tile.GateClosed : Tile.Gate);
+  // One gate open on each side of the centre column; the rest are closed off until the player buys gates there.
+  for (let x = g.x; x < g.x + g.w; x++) grid.setTile(x, g.y, x === g.x + 1 || x === g.x + g.w - 2 ? Tile.Gate : Tile.GateClosed);
 }
 
 /** Paints the slot's island unless its partner already has; the second of a pair paints nothing. */

@@ -13,7 +13,7 @@ import { checkSave } from "./saveCheck";
 import { Timetable, type Service } from "./timetable";
 import { createWorld, type World } from "./world";
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 /** The only map so far; its layout is constant data, so a save names it rather than storing it. */
 const MAP_ID = "harbour-street";
 
@@ -43,8 +43,8 @@ interface SaveFile {
   meter: { minutes: number[]; total: number[]; onTime: number[] };
   growth: GrowthState;
   grid: { version: number; tiles: string; zones: string; zoneOwner: string; dir: string };
-  /** The ticket gates' cadence; absent from saves made before gates (they start fresh). */
-  turnstiles?: TurnstileSave;
+  /** The ticket gates' cadence and queues. */
+  turnstiles: TurnstileSave;
   people: PeopleSave;
   /** Services in id order, which is the order the timetable's map hands them out. */
   timetable: { nextId: number; services: Service[]; lastDepart: [number, number][] };
@@ -87,7 +87,7 @@ export function serialise(w: World): string {
       zoneOwner: encodeBytes(g.zoneOwner),
       dir: encodeBytes(g.dir),
     },
-    turnstiles: saveTurnstiles(g),
+    turnstiles: saveTurnstiles(w.turnstiles, g),
     people: w.people.toSave(),
     timetable: {
       nextId: w.timetable.nextId,
@@ -141,7 +141,7 @@ export function deserialise(json: string): World {
   restoreBytes(g.zoneOwner, s.grid.zoneOwner, "grid.zoneOwner");
   restoreBytes(g.dir, s.grid.dir, "grid.dir");
   g.version = s.grid.version;
-  if (s.turnstiles) restoreTurnstiles(g, s.turnstiles);
+  restoreTurnstiles(w.turnstiles, s.turnstiles);
 
   w.people = PeopleStore.fromSave(MAX_PEOPLE, s.people);
 

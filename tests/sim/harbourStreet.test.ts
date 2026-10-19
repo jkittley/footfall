@@ -23,12 +23,13 @@ describe("Harbour Street", () => {
 
   test("slot geometry follows the layout rules", () => {
     for (const s of HARBOUR_STREET.slots) {
-      const x0 = 8 + 7 * (s.island - 1);
+      const x0 = 8 + 8 * (s.island - 1);
       const left = s.side === "left";
-      expect(s.track).toMatchObject({ x: left ? x0 : x0 + 5, w: 1, h: 30 });
-      expect(s.platform).toMatchObject({ x: left ? x0 + 1 : x0 + 3, w: 2, h: 30, y: s.track.y });
+      expect(s.track).toMatchObject({ x: left ? x0 : x0 + 6, w: 1, h: 30 });
+      // Each half is the edge column beside its track and one column in; x0 + 3 is shared.
+      expect(s.platform).toMatchObject({ x: left ? x0 + 1 : x0 + 4, w: 2, h: 30, y: s.track.y });
       expect(s.foot).toEqual(HARBOUR_STREET.islands[s.island - 1]!.foot);
-      expect(s.foot).toMatchObject({ x: x0, w: 7, y: s.track.y + 30 });
+      expect(s.foot).toMatchObject({ x: x0, w: 8, y: s.track.y + 30 });
     }
   });
 
@@ -37,10 +38,11 @@ describe("Harbour Street", () => {
     expect(m.islands).toHaveLength(9);
     expect(m.slots).toHaveLength(18);
     for (const isl of m.islands) {
-      const x0 = 8 + 7 * (isl.id - 1);
-      expect(isl.walkway).toEqual({ x: x0 + 1, y: 24, w: 4, h: 30 });
+      const x0 = 8 + 8 * (isl.id - 1);
+      expect(isl.walkway).toEqual({ x: x0 + 1, y: 24, w: 5, h: 30 });
       expect(isl.leftTrack).toEqual({ x: x0, y: 24, w: 1, h: 30 });
-      expect(isl.rightTrack).toEqual({ x: x0 + 5, y: 24, w: 1, h: 30 });
+      expect(isl.rightTrack).toEqual({ x: x0 + 6, y: 24, w: 1, h: 30 });
+      expect(isl.gateLine).toEqual({ x: x0 + 1, y: 53, w: 5, h: 1 });
       const left = m.slots[2 * isl.id - 2]!;
       const right = m.slots[2 * isl.id - 1]!;
       expect(left).toMatchObject({ id: 2 * isl.id - 1, island: isl.id, side: "left", track: isl.leftTrack });
@@ -48,7 +50,10 @@ describe("Harbour Street", () => {
     }
     const s3 = m.slots[2]!;
     expect(s3).toMatchObject({ island: 2, side: "left" });
-    expect(s3.platform).toEqual({ x: 15 + 1, y: 24, w: 2, h: 30 });
+    expect(s3.platform).toEqual({ x: 16 + 1, y: 24, w: 2, h: 30 });
+    // The island field ends at x 79, short of the goods shed.
+    const last = m.islands[8]!;
+    expect(last.foot.x + last.foot.w - 1).toBe(79);
   });
 
   test("islands 2..9 are all Ground in the starting grid and clear of obstacles", () => {

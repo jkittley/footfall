@@ -4,7 +4,7 @@ import { PRICES, REMOVE_REFUND } from "../../src/sim/economy";
 import { FacilityKind, tryJoin, Tenant } from "../../src/sim/facilities";
 import { Dir, Grid, Tile, Zone, type Rect } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
-import { createWorld, type World } from "../../src/sim/world";
+import { createWorld, fieldTargets, waitingSpots, type World } from "../../src/sim/world";
 import { entranceTiles, platformTiles, reachable, tilesOf, type XY } from "./helpers";
 
 // Platform 1's foot row at the top of its apron: its only way down to the concourse.
@@ -360,7 +360,7 @@ test("Gate tool opens a closed slot, costs 500, and remove refuses the last gate
   const line = w.map.islands[0]!.gateLine;
   const outer = { x: line.x, y: line.y, w: 1, h: 1 };
   const middle = { x: line.x + 1, y: line.y, w: 1, h: 1 };
-  const other = { x: line.x + 2, y: line.y, w: 1, h: 1 };
+  const other = { x: line.x + 3, y: line.y, w: 1, h: 1 };
   expect(PRICES.gate).toBe(500);
 
   const open = previewPlacement(w, "gate", outer);
@@ -372,7 +372,9 @@ test("Gate tool opens a closed slot, costs 500, and remove refuses the last gate
 
   expect(previewPlacement(w, "gate", middle).valid).toBe(false);
   expect(previewPlacement(w, "gate", { x: line.x, y: line.y - 1, w: 1, h: 1 }).valid).toBe(false);
-  expect(previewPlacement(w, "gate", { x: line.x + 3, y: line.y, w: 1, h: 1 }).valid).toBe(true);
+  expect(previewPlacement(w, "gate", { x: line.x + 2, y: line.y, w: 1, h: 1 }).valid).toBe(true);
+  expect(previewPlacement(w, "gate", { x: line.x + 4, y: line.y, w: 1, h: 1 }).valid).toBe(true);
+  expect(previewPlacement(w, "gate", other).valid).toBe(false);
   expect(previewPlacement(w, "gate", { ...outer, w: 2 }).reason).toBe("Pick one tile");
   const unopened = w.map.islands[1]!.gateLine;
   expect(previewPlacement(w, "gate", { x: unopened.x, y: unopened.y, w: 1, h: 1 }).valid).toBe(false);
@@ -389,4 +391,101 @@ test("Gate tool opens a closed slot, costs 500, and remove refuses the last gate
   expect(last.reason).toBe("An island needs at least one gate");
   expect(previewPlacement(w, "remove", line).reason).toBe("An island needs at least one gate");
   expect(previewPlacement(w, "remove", outer).reason).toBe("Nothing to remove here");
+});
+
+test("an island takes up to 5 gates", () => {
+  const w = createWorld(1);
+  const line = w.map.islands[0]!.gateLine;
+  for (const x of [line.x, line.x + 2, line.x + 4]) expect(applyPlacement(w, previewPlacement(w, "gate", { x, y: line.y, w: 1, h: 1 }))).toBe(true);
+  expect(tilesOf(line).every(([x, y]) => w.grid.tile(x, y) === Tile.Gate)).toBe(true);
+  for (const [x, y] of tilesOf(line)) expect(previewPlacement(w, "gate", { x, y, w: 1, h: 1 }).reason).toBe("Pick a closed gate slot");
+});
+
+/** Island 1's left track column: its walkway is x0 + 1 .. x0 + 5, its gate row `gateY`. */
+function islandOne(w: World): { x0: number; gateY: number } {
+  const isl = w.map.islands[0]!;
+  return { x0: isl.leftTrack.x, gateY: isl.gateLine.y };
+}
+
+test("an island's centre takes seating, toilets, shops, walls, rails and signs; its edges take nothing", () => {
+  const w = createWorld(1);
+  const { x0 } = islandOne(w);
+  const ok = (p: ReturnType<typeof previewPlacement>): void => expect([p.reason, p.valid]).toEqual([null, true]);
+  ok(previewPlacement(w, "seating", { x: x0 + 3, y: 30, w: 1, h: 2 }));
+  ok(previewPlacement(w, "retail", { x: x0 + 2, y: 30, w: 3, h: 2 }));
+  ok(previewPlacement(w, "toilet", { x: x0 + 2, y: 30, w: 2, h: 2 }));
+  ok(previewPlacement(w, "wall", { x: x0 + 3, y: 30, w: 1, h: 5 }));
+  ok(previewPlacement(w, "rail", { x: x0 + 2, y: 30, w: 3, h: 1 }));
+  ok(previewPlacement(w, "sign", { x: x0 + 4, y: 30, w: 1, h: 1 }, { signKind: "toilets" }));
+
+  for (const edge of [x0 + 1, x0 + 5]) {
+    for (const p of [
+      previewPlacement(w, "seating", { x: edge, y: 30, w: 1, h: 2 }),
+      previewPlacement(w, "wall", { x: edge, y: 30, w: 1, h: 3 }),
+      previewPlacement(w, "sign", { x: edge, y: 30, w: 1, h: 1 }, { signKind: "shops" }),
+      previewPlacement(w, "travelator", { x: edge, y: 30, w: 1, h: 4 }, { dir: Dir.N }),
+    ]) {
+      expect(p.valid).toBe(false);
+      expect(p.reason).toBe("Keep the platform edge clear");
+    }
+  }
+  // A wall from edge to edge reaches the edges too.
+  expect(previewPlacement(w, "wall", { x: x0 + 1, y: 30, w: 5, h: 1 }).reason).toBe("Keep the platform edge clear");
+  // Floor never goes on a platform, nor a travelator.
+  expect(previewPlacement(w, "floor", { x: x0 + 2, y: 30, w: 3, h: 3 }).reason).toBe("Nothing to build here");
+  expect(previewPlacement(w, "travelator", { x: x0 + 3, y: 30, w: 1, h: 4 }, { dir: Dir.N }).reason).toBe("Must be on plain floor");
+  // The gate row is not centre ground either.
+  expect(previewPlacement(w, "seating", { x: x0 + 3, y: islandOne(w).gateY - 1, w: 1, h: 2 }).valid).toBe(false);
+});
+
+test("a build across the whole centre beside the gates would cut the island off", () => {
+  const w = createWorld(1);
+  const { x0, gateY } = islandOne(w);
+  // The edges meet the gate row only at closed slots, so this row is the only way down.
+  const p = previewPlacement(w, "wall", { x: x0 + 2, y: gateY - 1, w: 3, h: 1 });
+  expect(p.valid).toBe(false);
+  expect(p.reason).toBe("Would cut off Platform 1");
+  expect(previewPlacement(w, "retail", { x: x0 + 2, y: gateY - 2, w: 3, h: 2 }).reason).toBe("Would cut off Platform 1");
+  // Higher up the edges walk round it.
+  expect(previewPlacement(w, "wall", { x: x0 + 2, y: 40, w: 3, h: 1 }).valid).toBe(true);
+});
+
+test("removing what stands on an island gives back platform, not floor", () => {
+  const w = createWorld(1);
+  const { x0 } = islandOne(w);
+  const seat = { x: x0 + 3, y: 30, w: 1, h: 2 };
+  const wall = { x: x0 + 2, y: 36, w: 1, h: 3 };
+  for (const [tool, r] of [["seating", seat], ["wall", wall], ["rail", { x: x0 + 4, y: 36, w: 1, h: 2 }]] as const)
+    expect(applyPlacement(w, previewPlacement(w, tool, r))).toBe(true);
+  expect(w.grid.tile(x0 + 2, 37)).toBe(Tile.Wall);
+  expect(applyPlacement(w, previewPlacement(w, "remove", { x: x0 + 2, y: 30, w: 3, h: 10 }))).toBe(true);
+  for (const [x, y] of tilesOf({ x: x0 + 2, y: 30, w: 3, h: 10 })) {
+    expect(w.grid.tile(x, y)).toBe(Tile.Platform);
+    expect(w.grid.zone(x, y)).toBe(Zone.None);
+  }
+  expect(w.facilities.size).toBe(0);
+  // Bare platform is not removed.
+  expect(previewPlacement(w, "remove", { x: x0 + 2, y: 30, w: 3, h: 10 }).reason).toBe("Nothing to remove here");
+});
+
+test("built-on platform is no place to board or wait, and queues keep off the edges and the gate row", () => {
+  const w = createWorld(1);
+  const { x0, gateY } = islandOne(w);
+  const seat = { x: x0 + 2, y: 30, w: 1, h: 2 };
+  expect(applyPlacement(w, previewPlacement(w, "seating", seat))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "retail", { x: x0 + 2, y: 44, w: 3, h: 2 }))).toBe(true);
+  const seatTiles = tilesOf(seat).map(([x, y]) => w.grid.idx(x, y));
+  const targets = fieldTargets(w, "platform:1");
+  for (const t of seatTiles) expect(targets).not.toContain(t);
+  expect(targets.every((t) => w.grid.zones[t] === Zone.None)).toBe(true);
+  expect(waitingSpots(w, "platform:1").every((t) => t % w.grid.w === x0 + 1)).toBe(true);
+
+  const shop = [...w.facilities.values()].find((f) => f.kind === FacilityKind.Retail)!;
+  expect(shop.queueTiles.length).toBeGreaterThan(0);
+  for (const t of [...shop.queueTiles, ...shop.serviceTiles]) {
+    const [x, y] = w.grid.xy(t);
+    expect(x).toBeGreaterThanOrEqual(x0 + 2);
+    expect(x).toBeLessThanOrEqual(x0 + 4);
+    expect(y).toBeLessThan(gateY);
+  }
 });

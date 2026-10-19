@@ -3,7 +3,7 @@ import { GAME_MIN_PER_REAL_SEC, GATE_INTERVAL_SEC, SIM_DT } from "../../src/sim/
 import { CrowdGrid } from "../../src/sim/crowd";
 import { Tile, type Grid } from "../../src/sim/grid";
 import { HARBOUR_STREET, buildGrid } from "../../src/sim/maps/harbourStreet";
-import { stepMovement } from "../../src/sim/movement";
+import { createTurnstiles, stepMovement, type Turnstiles } from "../../src/sim/movement";
 import { PState, PeopleStore } from "../../src/sim/people";
 import { FieldCache } from "../../src/sim/routeField";
 import { createWorld, fieldTargets, waitingSpots } from "../../src/sim/world";
@@ -23,6 +23,7 @@ interface Hall {
   fields: FieldCache;
   people: PeopleStore;
   crowd: CrowdGrid;
+  turnstiles: Turnstiles;
   top: number[];
 }
 
@@ -39,13 +40,20 @@ function hall(open: number[], walkers: number): Hall {
   }
   const top: number[] = [];
   for (let x = 0; x < grid.w; x++) top.push(grid.idx(x, 0));
-  return { grid, fields: new FieldCache(grid), people, crowd: new CrowdGrid(grid.w, grid.h), top };
+  return {
+    grid,
+    fields: new FieldCache(grid),
+    people,
+    crowd: new CrowdGrid(grid.w, grid.h),
+    turnstiles: createTurnstiles(grid.w * grid.h, walkers),
+    top,
+  };
 }
 
 /** One step; arrivals leave. Returns how many arrived. */
 function stepHall(h: Hall, dt: number): number {
   h.crowd.rebuild(h.people, h.grid);
-  const arrived = stepMovement(h.grid, h.fields, () => h.top, h.people, h.crowd, dt);
+  const arrived = stepMovement(h.grid, h.fields, () => h.top, h.people, h.crowd, h.turnstiles, dt);
   for (const i of arrived) h.people.free(i);
   return arrived.length;
 }
@@ -124,11 +132,17 @@ test("a turnstile admits nobody sooner than its cadence after the last entry", (
   expect(entries.length - 1).toBeGreaterThanOrEqual(0.8 * (span / GATE_INTERVAL_SEC));
 });
 
-test("each island's foot gets a gate line of 4: the 2 middle open, the 2 outer closed", () => {
+test("each island's foot gets a gate line of 5: one open on each side, the edges and centre closed", () => {
   const g = buildGrid(HARBOUR_STREET, 2);
   const isl = HARBOUR_STREET.islands[0]!;
-  expect(isl.gateLine).toEqual({ x: isl.walkway.x, y: isl.walkway.y + isl.walkway.h - 1, w: 4, h: 1 });
-  expect(tilesOf(isl.gateLine).map(([x, y]) => g.tile(x, y))).toEqual([Tile.GateClosed, Tile.Gate, Tile.Gate, Tile.GateClosed]);
+  expect(isl.gateLine).toEqual({ x: isl.walkway.x, y: isl.walkway.y + isl.walkway.h - 1, w: 5, h: 1 });
+  expect(tilesOf(isl.gateLine).map(([x, y]) => g.tile(x, y))).toEqual([
+    Tile.GateClosed,
+    Tile.Gate,
+    Tile.GateClosed,
+    Tile.Gate,
+    Tile.GateClosed,
+  ]);
   expect(g.isWalkable(isl.gateLine.x + 1, isl.gateLine.y)).toBe(true);
   expect(g.isWalkable(isl.gateLine.x, isl.gateLine.y)).toBe(false);
   for (const later of HARBOUR_STREET.islands.slice(1))
@@ -158,4 +172,51 @@ test("an unobstructed station still has a high on-time rate with 2 gates per isl
   }
   expect(all).toBeGreaterThan(200);
   expect(onTime / all).toBeGreaterThanOrEqual(0.9);
+});
+
+test("two queues from opposite sides of one gate take turns rather than one side waiting for the other to clear", () => {
+  // 40 heading north from below the gate (the low indices) and 40 heading south from above it.
+  const grid = gateHall([4]);
+  const people = new PeopleStore(80);
+  const top: number[] = [];
+  const bottom: number[] = [];
+  for (let x = 0; x < grid.w; x++) {
+    top.push(grid.idx(x, 0));
+    bottom.push(grid.idx(x, grid.h - 1));
+  }
+  for (let n = 0; n < 80; n++) {
+    const i = people.alloc();
+    const north = n < 40;
+    const k = n % 40;
+    people.x[i] = 2 + (k % 5) + 0.5;
+    people.y[i] = north ? GATE_ROW + 2 + Math.floor(k / 5) * 0.5 + 0.25 : GATE_ROW - 2 - Math.floor(k / 5) * 0.5 - 0.25;
+    people.state[i] = PState.Walking;
+    people.targetKey[i] = people.goalKey[i] = north ? "top" : "bottom";
+  }
+  const h = { grid, fields: new FieldCache(grid), people, crowd: new CrowdGrid(grid.w, grid.h), turnstiles: createTurnstiles(grid.w * grid.h, 80) };
+  const gate = grid.idx(4, GATE_ROW);
+  const entered = new Set<number>();
+  const order: boolean[] = [];
+  for (let k = 0; k < 3000 && entered.size < 80; k++) {
+    h.crowd.rebuild(people, grid);
+    const arrived = stepMovement(grid, h.fields, (key) => (key === "top" ? top : bottom), people, h.crowd, h.turnstiles, SIM_DT);
+    people.forEachAlive((i) => {
+      if (entered.has(i) || grid.idx(Math.floor(people.x[i]!), Math.floor(people.y[i]!)) !== gate) return;
+      entered.add(i);
+      order.push(i < 40);
+    });
+    for (const i of arrived) people.free(i);
+  }
+  expect(entered.size).toBe(80);
+  // While both sides still have people to send, neither waits for the other's whole queue.
+  const firstHalf = order.slice(0, 40);
+  expect(firstHalf.filter((north) => north).length).toBeGreaterThanOrEqual(12);
+  expect(firstHalf.filter((north) => !north).length).toBeGreaterThanOrEqual(12);
+  let run = 1;
+  let longest = 1;
+  for (let k = 1; k < 40; k++) {
+    run = order[k] === order[k - 1] ? run + 1 : 1;
+    longest = Math.max(longest, run);
+  }
+  expect(longest).toBeLessThanOrEqual(6);
 });

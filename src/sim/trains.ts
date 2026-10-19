@@ -1,4 +1,4 @@
-import { Tile } from "./grid";
+import { Tile, Zone } from "./grid";
 import { PState } from "./people";
 import type { Service } from "./timetable";
 import { onTrainArrived, rebook, rebookContext, sendToExit, type RebookContext } from "./spawner";
@@ -56,5 +56,6 @@ function onPlatform(w: World, platformId: number, px: number, py: number): boole
   if (!r) return false;
   const tx = Math.floor(px);
   const ty = Math.floor(py);
-  return tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h && w.grid.tile(tx, ty) === Tile.Platform;
+  if (tx < r.x || tx >= r.x + r.w || ty < r.y || ty >= r.y + r.h) return false;
+  return w.grid.tile(tx, ty) === Tile.Platform && w.grid.zone(tx, ty) === Zone.None;
 }

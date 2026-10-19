@@ -61,70 +61,150 @@ function canMove(grid: Grid, ax: number, ay: number, bx: number, by: number): bo
   return true;
 }
 
-/** A grid's turnstiles: the real seconds stepped so far, and when each gate tile next admits someone. */
-interface Turnstiles {
+/**
+ * A station's ticket gates: the real seconds stepped so far, when each gate tile next admits
+ * someone, and who is waiting to enter which gate. A gate that is ready admits whoever has been
+ * waiting at it longest (lowest index on a tie), so queues from both sides take turns.
+ */
+export interface Turnstiles {
   clock: number;
+  /** Calls of stepMovement completed. */
+  step: number;
+  /** Per tile: the clock at which it next admits someone. */
   nextFree: Float64Array;
+  /** Per person: the gate tile they last asked to enter, -1 once through (or never). */
+  waitGate: Int32Array;
+  /** Per person: the clock when they began waiting at `waitGate`. */
+  waitSince: Float64Array;
+  /** Per person: the step in which they last asked; a wait not renewed by the next step lapses. */
+  waitStep: Float64Array;
+  /** Per gate tile, everyone who asked to enter it in the last step, longest waiting first. */
+  queues: Map<number, number[]>;
 }
 
-// Kept per grid rather than on the world, so every caller of stepMovement gets the cadence.
-const turnstilesOf = new WeakMap<Grid, Turnstiles>();
-
-function turnstilesFor(grid: Grid): Turnstiles {
-  let ts = turnstilesOf.get(grid);
-  if (!ts || ts.nextFree.length !== grid.w * grid.h) {
-    ts = { clock: 0, nextFree: new Float64Array(grid.w * grid.h).fill(-Infinity) };
-    turnstilesOf.set(grid, ts);
-  }
-  return ts;
+/** Turnstiles for a grid of `tiles` tiles and a people store of `people` slots. */
+export function createTurnstiles(tiles: number, people: number): Turnstiles {
+  return {
+    clock: 0,
+    step: 0,
+    nextFree: new Float64Array(tiles).fill(-Infinity),
+    waitGate: new Int32Array(people).fill(-1),
+    waitSince: new Float64Array(people),
+    waitStep: new Float64Array(people).fill(-Infinity),
+    queues: new Map(),
+  };
 }
 
-/** The turnstiles as saved: the clock, and each gate tile's next-free time where it has one. */
+/** The turnstiles as saved: each gate tile's next-free time, and each wait still running as [person, gate, since, step]. */
 export interface TurnstileSave {
   clock: number;
+  step: number;
   gates: [number, number][];
+  waiting: [number, number, number, number][];
 }
 
-export function saveTurnstiles(grid: Grid): TurnstileSave {
-  const ts = turnstilesFor(grid);
+/** Only tiles that are still gates are kept: a closed slot has no cadence to carry. */
+export function saveTurnstiles(ts: Turnstiles, grid: Grid): TurnstileSave {
   const gates: [number, number][] = [];
   ts.nextFree.forEach((t, i) => {
-    if (Number.isFinite(t)) gates.push([i, t]);
+    if (Number.isFinite(t) && grid.tiles[i] === Tile.Gate) gates.push([i, t]);
   });
-  return { clock: ts.clock, gates };
+  const waiting: [number, number, number, number][] = [];
+  ts.waitGate.forEach((g, i) => {
+    if (g >= 0 && ts.waitStep[i]! >= ts.step - 1) waiting.push([i, g, ts.waitSince[i]!, ts.waitStep[i]!]);
+  });
+  return { clock: ts.clock, step: ts.step, gates, waiting };
 }
 
-/** Puts saved turnstiles back on `grid`; throws `Corrupt save: turnstiles` on a tile off the grid. */
-export function restoreTurnstiles(grid: Grid, s: TurnstileSave): void {
-  const ts = turnstilesFor(grid);
+/** Puts saved turnstiles back; throws `Corrupt save: turnstiles` on a tile or person out of range. */
+export function restoreTurnstiles(ts: Turnstiles, s: TurnstileSave): void {
+  const inRange = (i: number, n: number): boolean => Number.isInteger(i) && i >= 0 && i < n;
   ts.clock = s.clock;
+  ts.step = s.step;
   ts.nextFree.fill(-Infinity);
   for (const [i, t] of s.gates) {
-    if (!Number.isInteger(i) || i < 0 || i >= ts.nextFree.length) throw new Error("Corrupt save: turnstiles");
+    if (!inRange(i, ts.nextFree.length)) throw new Error("Corrupt save: turnstiles");
     ts.nextFree[i] = t;
   }
+  ts.waitGate.fill(-1);
+  ts.waitStep.fill(-Infinity);
+  for (const [i, g, since, step] of s.waiting) {
+    if (!inRange(i, ts.waitGate.length) || !inRange(g, ts.nextFree.length)) throw new Error("Corrupt save: turnstiles");
+    ts.waitGate[i] = g;
+    ts.waitSince[i] = since;
+    ts.waitStep[i] = step;
+  }
+  rebuildQueues(ts, ts.step - 1);
+}
+
+/** Each gate's queue from the waits renewed in step `step`, longest waiting first, then by index. */
+function rebuildQueues(ts: Turnstiles, step: number): void {
+  ts.queues.clear();
+  ts.waitGate.forEach((g, i) => {
+    if (g < 0 || ts.waitStep[i] !== step) return;
+    let q = ts.queues.get(g);
+    if (!q) ts.queues.set(g, (q = []));
+    q.push(i);
+  });
+  for (const q of ts.queues.values()) q.sort((a, b) => ts.waitSince[a]! - ts.waitSince[b]! || a - b);
 }
 
 /**
- * Real seconds to wait, from turnstile clock `now`, before stepping from tile `from` onto tile
- * `to`: 0 unless `to` is a gate being entered, else until GATE_INTERVAL_SEC has passed since its last entry.
+ * True if someone who has waited longer than person `i` (or as long, with a lower index) is still
+ * waiting at `gate`. Anyone stepped already this step who did not ask again has gone elsewhere.
  */
-function gateWait(ts: Turnstiles, grid: Grid, from: number, to: number, now: number): number {
+function someoneAhead(ts: Turnstiles, people: PeopleStore, gate: number, i: number): boolean {
+  const q = ts.queues.get(gate);
+  if (!q) return false;
+  const since = ts.waitSince[i]!;
+  for (const j of q) {
+    if (j === i) return false;
+    if (!people.isAlive(j) || ts.waitGate[j] !== gate || (j < i && ts.waitStep[j] !== ts.step)) continue;
+    // The queue is in order, so the first still waiting decides.
+    return ts.waitSince[j]! < since || (ts.waitSince[j] === since && j < i);
+  }
+  return false;
+}
+
+/**
+ * Real seconds person `i` waits, from clock `now`, before stepping from tile `from` onto tile `to`:
+ * 0 unless `to` is a gate being entered; else until GATE_INTERVAL_SEC has passed since its last
+ * entry, or Infinity while someone who has waited longer is still waiting for it. Asking renews `i`'s wait.
+ */
+function gateWait(ts: Turnstiles, people: PeopleStore, grid: Grid, from: number, to: number, now: number, i: number): number {
   if (to === from || grid.tiles[to] !== Tile.Gate) return 0;
+  if (ts.waitGate[i] !== to || ts.waitStep[i]! < ts.step - 1) {
+    ts.waitGate[i] = to;
+    ts.waitSince[i] = now;
+  }
+  ts.waitStep[i] = ts.step;
   const wait = ts.nextFree[to]! - now;
-  return wait > EPS_TIME ? wait : 0;
+  if (wait > EPS_TIME) return wait;
+  return someoneAhead(ts, people, to, i) ? Infinity : 0;
 }
 
-/** A step from tile `from` onto tile `to` at turnstile clock `now`: entering a gate starts its interval. */
-function noteEntry(ts: Turnstiles, grid: Grid, from: number, to: number, now: number): void {
-  if (to !== from && grid.tiles[to] === Tile.Gate) ts.nextFree[to] = now + GATE_INTERVAL_SEC;
+/** Person `i` steps from tile `from` onto tile `to` at clock `now`: entering a gate starts its interval and ends their wait. */
+function noteEntry(ts: Turnstiles, grid: Grid, from: number, to: number, now: number, i: number): void {
+  if (to === from || grid.tiles[to] !== Tile.Gate) return;
+  ts.nextFree[to] = now + GATE_INTERVAL_SEC;
+  ts.waitGate[i] = -1;
 }
 
-/** True if a straight move from (ax, ay) to (bx, by) is open and needs no wait at a gate. */
-function canMoveAs(ts: Turnstiles, grid: Grid, ax: number, ay: number, bx: number, by: number, now: number): boolean {
+/** True if person `i`'s straight move from (ax, ay) to (bx, by) is open and needs no wait at a gate. */
+function canMoveAs(
+  ts: Turnstiles,
+  people: PeopleStore,
+  grid: Grid,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  now: number,
+  i: number,
+): boolean {
   if (!canMove(grid, ax, ay, bx, by)) return false;
   const from = Math.floor(ay) * grid.w + Math.floor(ax);
-  return gateWait(ts, grid, from, Math.floor(by) * grid.w + Math.floor(bx), now) === 0;
+  return gateWait(ts, people, grid, from, Math.floor(by) * grid.w + Math.floor(bx), now, i) === 0;
 }
 
 /** A random walkable neighbour of (x, y), 8-way without cutting corners; -1 if none. */
@@ -153,9 +233,10 @@ function randomNeighbour(grid: Grid, x: number, y: number, rng: Rng): number {
  * is the one that was checked against walls.
  * Given `rng`, a field walker slowed below full speed (desperate) lurches to a random neighbouring
  * tile about DRIFT_PER_TILE of the tiles they walk, following the field otherwise.
- * A gate tile is a turnstile: it admits one person per GATE_INTERVAL_SEC, whoever is still on it.
- * Anyone it is not ready for waits at its edge, still counted in the crowd (that is the queue); on
- * it they walk at full speed, the crowd outside not slowing them.
+ * A gate tile is a turnstile (`turnstiles`, sized for `grid` and `people`): it admits one person
+ * per GATE_INTERVAL_SEC, whoever is still on it, longest waiting first. Anyone it is not ready for
+ * waits at its edge, still counted in the crowd (that is the queue); on it they walk at full speed,
+ * the crowd outside not slowing them.
  */
 export function stepMovement(
   grid: Grid,
@@ -163,6 +244,7 @@ export function stepMovement(
   fieldTargets: (key: string) => readonly number[],
   people: PeopleStore,
   crowd: CrowdGrid,
+  turnstiles: Turnstiles,
   dtReal: number,
   rng?: Rng,
 ): number[] {
@@ -173,7 +255,7 @@ export function stepMovement(
   const crowdAt = (n: number): number => counts[n]!;
   const w = grid.w;
   const { x, y, state, targetKey, speedMul, drift } = people;
-  const ts = turnstilesFor(grid);
+  const ts = turnstiles;
 
   for (let i = 0, end = people.end; i < end; i++) {
     const st = state[i]!;
@@ -220,18 +302,18 @@ export function stepMovement(
         const nx = Math.fround(px + (dx / dist) * move);
         const ny = Math.fround(py + (dy / dist) * move);
         const now = clock + dtReal - time;
-        if (canMoveAs(ts, grid, px, py, nx, ny, now)) {
+        if (canMoveAs(ts, people, grid, px, py, nx, ny, now, i)) {
           px = nx;
           py = ny;
-        } else if (nx !== px && canMoveAs(ts, grid, px, py, nx, py, now)) {
+        } else if (nx !== px && canMoveAs(ts, people, grid, px, py, nx, py, now, i)) {
           px = nx;
-        } else if (ny !== py && canMoveAs(ts, grid, px, py, px, ny, now)) {
+        } else if (ny !== py && canMoveAs(ts, people, grid, px, py, px, ny, now, i)) {
           py = ny;
         }
         time -= move / speed;
         tx = Math.floor(px);
         ty = Math.floor(py);
-        noteEntry(ts, grid, here, ty * w + tx, now);
+        noteEntry(ts, grid, here, ty * w + tx, now, i);
       }
     } else {
       thunkKey = key;
@@ -267,7 +349,7 @@ export function stepMovement(
         const my = Math.fround(py + (dy / dist) * move);
         const to = Math.floor(my) * w + Math.floor(mx);
         const now = clock + dtReal - time;
-        const wait = gateWait(ts, grid, here, to, now);
+        const wait = gateWait(ts, people, grid, here, to, now, i);
         if (wait > 0) {
           // The turnstile is not ready: stand at its edge, giving up any lurch toward it, and step
           // through within this dt if its cadence comes round in time.
@@ -276,7 +358,7 @@ export function stepMovement(
           time -= wait;
           continue;
         }
-        noteEntry(ts, grid, here, to, now);
+        noteEntry(ts, grid, here, to, now, i);
         px = mx;
         py = my;
         time -= move / speed;
@@ -289,6 +371,8 @@ export function stepMovement(
     y[i] = py;
   }
   ts.clock += dtReal;
+  rebuildQueues(ts, ts.step);
+  ts.step++;
   return arrived;
 }
 

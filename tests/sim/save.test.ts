@@ -99,10 +99,10 @@ test("refuses an unknown version", () => {
   expect(() => deserialise(JSON.stringify({ ...save, version: 99 }))).toThrow("Unsupported save version");
 });
 
-test("a version 1 save is refused", () => {
-  expect(SAVE_VERSION).toBe(2);
+test("version 1 and 2 saves (narrower islands) are refused", () => {
+  expect(SAVE_VERSION).toBe(3);
   const save = JSON.parse(serialise(createWorld(1))) as Record<string, unknown>;
-  expect(() => deserialise(JSON.stringify({ ...save, version: 1 }))).toThrow("Unsupported save version");
+  for (const version of [1, 2]) expect(() => deserialise(JSON.stringify({ ...save, version }))).toThrow("Unsupported save version");
 });
 
 test("the world asks for an autosave once per game hour crossed", () => {
@@ -124,7 +124,7 @@ test("every world field is saved or rebuilt on load", () => {
   const saved = [
     "seed", "rng", "grid", "people", "minute", "timetable", "trainsUpTo", "platformsAdded", "platformActive",
     "meter", "growth", "growthUpTo", "stagesUnlocked", "stats", "ledger", "day", "facilities", "disruptions",
-    "signs", "searchClock", "nextId", "autosaveHour",
+    "signs", "searchClock", "nextId", "autosaveHour", "turnstiles",
   ];
   const rebuilt = ["map", "fields", "crowd", "events"];
   expect(Object.keys(createWorld(1)).sort()).toEqual([...saved, ...rebuilt].sort());
@@ -180,6 +180,8 @@ const CORRUPTIONS: [string, (s: Record<string, any>) => void, string][] = [
   ["a disruption with no end", (s) => delete s.disruptions[0].endsAt, "disruptions[0].endsAt"],
   ["a turnstile clock that is not a number", (s) => (s.turnstiles.clock = "soon"), "turnstiles.clock"],
   ["a turnstile off the grid", (s) => (s.turnstiles.gates = [[1e9, 0]]), "turnstiles"],
+  ["no turnstiles", (s) => delete s.turnstiles, "turnstiles"],
+  ["a gate waiter of the wrong shape", (s) => (s.turnstiles.waiting = [[1, 2]]), "turnstiles.waiting[0]"],
 ];
 
 test.each(CORRUPTIONS)("refuses a save with %s at load", (_name, corrupt, field) => {
@@ -198,13 +200,24 @@ test("gate tiles survive a save at the same version", () => {
   const w = createWorld(1);
   const line = w.map.islands[0]!.gateLine;
   build(w, "gate", { x: line.x, y: line.y, w: 1, h: 1 });
-  expect(SAVE_VERSION).toBe(2);
   const back = deserialise(serialise(w));
   expect(Array.from(back.grid.tiles)).toEqual(Array.from(w.grid.tiles));
   expect(back.grid.tiles[back.grid.idx(line.x, line.y)]).toBe(8);
-  expect(back.grid.tiles[back.grid.idx(line.x + 3, line.y)]).toBe(9);
-  // A save from before gates has no turnstiles: it loads, its gates starting fresh.
-  const old = JSON.parse(serialise(w));
-  delete old.turnstiles;
-  expect(() => deserialise(JSON.stringify(old))).not.toThrow();
+  expect(back.grid.tiles[back.grid.idx(line.x + 2, line.y)]).toBe(9);
+});
+
+test("the turnstiles are saved from the world, keeping only tiles that are still gates", () => {
+  const w = createWorld(1);
+  const line = w.map.islands[0]!.gateLine;
+  const open = w.grid.idx(line.x + 1, line.y);
+  const closed = w.grid.idx(line.x + 2, line.y);
+  const floor = w.grid.idx(10, 60);
+  w.turnstiles.clock = 12;
+  w.turnstiles.nextFree[open] = 12.1;
+  w.turnstiles.nextFree[closed] = 11.9;
+  w.turnstiles.nextFree[floor] = 11.8;
+  const saved = JSON.parse(serialise(w)).turnstiles;
+  expect(saved.clock).toBe(12);
+  expect(saved.gates).toEqual([[open, 12.1]]);
+  expect(deserialise(serialise(w)).turnstiles.nextFree[open]).toBe(12.1);
 });

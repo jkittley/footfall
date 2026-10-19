@@ -2,7 +2,7 @@ import { Grid, Tile, type Rect } from "./sim/grid";
 import { CrowdGrid } from "./sim/crowd";
 import { PeopleStore, PState } from "./sim/people";
 import { FieldCache } from "./sim/routeField";
-import { stepMovement } from "./sim/movement";
+import { createTurnstiles, stepMovement } from "./sim/movement";
 import { Rng } from "./sim/rng";
 import { SIM_DT } from "./sim/constants";
 
@@ -17,6 +17,7 @@ export class BenchScenario {
   readonly grid = new Grid(BENCH_W, BENCH_H);
   readonly crowd = new CrowdGrid(BENCH_W, BENCH_H);
   readonly people = new PeopleStore(BENCH_PEOPLE);
+  readonly turnstiles = createTurnstiles(BENCH_W * BENCH_H, BENCH_PEOPLE);
   readonly fields = new FieldCache(this.grid);
   readonly obstacles: Rect[] = [];
   readonly targetAreas: Rect[] = [];
@@ -86,7 +87,7 @@ export class BenchScenario {
   step(): void {
     const { people } = this;
     this.crowd.rebuild(people, this.grid);
-    const arrived = stepMovement(this.grid, this.fields, this.fieldTargets, people, this.crowd, SIM_DT);
+    const arrived = stepMovement(this.grid, this.fields, this.fieldTargets, people, this.crowd, this.turnstiles, SIM_DT);
     for (const i of arrived) this.respawn(i);
   }
 }

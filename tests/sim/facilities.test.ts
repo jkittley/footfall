@@ -126,7 +126,7 @@ test("queue forms on the floor and serves in order", () => {
   // Walk them (movement only, nobody served yet): each stands on their own queue tile.
   for (let n = 0; n < 600; n++) {
     w.crowd.rebuild(w.people, w.grid);
-    stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, SIM_DT);
+    stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, w.turnstiles, SIM_DT);
   }
   ids.forEach((id, k) => expect(tileOf(w, id)).toBe(f.queueTiles[k]));
 

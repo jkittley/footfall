@@ -13,10 +13,10 @@ import {
   type DaySummary,
 } from "./economy";
 import { FacilityKind, arriveAtFacility, stepFacilities, type Facility } from "./facilities";
-import { Tile, type Grid, type Rect } from "./grid";
+import { Tile, Zone, type Grid, type Rect } from "./grid";
 import { ServiceMeter, newGrowthState, stepGrowth, type GrowthState } from "./growth";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
-import { stepMovement } from "./movement";
+import { createTurnstiles, stepMovement, type Turnstiles } from "./movement";
 import { dropErrand, meetsNeed, stepNeeds, type Sign } from "./needs";
 import { Journey, PState, PeopleStore } from "./people";
 import { Rng } from "./rng";
@@ -42,6 +42,8 @@ export interface World {
   fields: FieldCache;
   people: PeopleStore;
   crowd: CrowdGrid;
+  /** The ticket gates' cadence and who is waiting at each. */
+  turnstiles: Turnstiles;
   minute: number;
   timetable: Timetable;
   /** Train events (arrivals, boarding, departures) have been run up to this minute. */
@@ -83,6 +85,7 @@ export function createWorld(seed: number): World {
     fields: new FieldCache(grid),
     people: new PeopleStore(MAX_PEOPLE),
     crowd: new CrowdGrid(grid.w, grid.h),
+    turnstiles: createTurnstiles(grid.w * grid.h, MAX_PEOPLE),
     minute: START_MINUTE,
     timetable: new Timetable(),
     trainsUpTo: START_MINUTE,
@@ -130,8 +133,8 @@ export function fieldTargets(w: World, key: string): readonly number[] {
   const arg = key.slice(colon + 1);
   if (kind === "platform") {
     const slot = w.map.slots.find((s) => String(s.id) === arg);
-    // Platform tiles only: the walkway's gate row is not somewhere to board, wait or alight.
-    return slot ? rectTiles(w.grid, slot.platform).filter((t) => w.grid.tiles[t] === Tile.Platform) : [];
+    // Bare platform only: the walkway's gate row, and anything built on the island's centre, is not somewhere to board, wait or alight.
+    return slot ? rectTiles(w.grid, slot.platform).filter((t) => w.grid.tiles[t] === Tile.Platform && w.grid.zones[t] === Zone.None) : [];
   }
   if (kind === "exit") {
     const e = w.map.entrances.find((en) => en.id === arg);
@@ -240,7 +243,7 @@ export function step(w: World, dtReal: number): void {
   stepSpawner(w, dtReal * GAME_MIN_PER_REAL_SEC);
   stepNeeds(w, dtReal * GAME_MIN_PER_REAL_SEC);
   stepFacilities(w, dtReal * GAME_MIN_PER_REAL_SEC);
-  const arrived = stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, dtReal, w.rng);
+  const arrived = stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, w.turnstiles, dtReal, w.rng);
   handleArrivals(w, arrived);
   stepGrowth(w);
   rollDays(w);

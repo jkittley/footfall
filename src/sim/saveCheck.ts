@@ -97,11 +97,10 @@ export function checkSave(save: unknown, slotCount: number): void {
   need(finite(growth.cooldownUntil), "growth.cooldownUntil");
 
   need(finite(obj(s.grid, "grid").version), "grid.version");
-  if (s.turnstiles !== undefined) {
-    const t = obj(s.turnstiles, "turnstiles");
-    need(finite(t.clock), "turnstiles.clock");
-    list(t.gates, "turnstiles.gates").forEach((e, i) => numList(e, `turnstiles.gates[${i}]`, 2));
-  }
+  const t = obj(s.turnstiles, "turnstiles");
+  nums(t, ["clock", "step"], "turnstiles.");
+  list(t.gates, "turnstiles.gates").forEach((e, i) => numList(e, `turnstiles.gates[${i}]`, 2));
+  list(t.waiting, "turnstiles.waiting").forEach((e, i) => numList(e, `turnstiles.waiting[${i}]`, 4));
   obj(s.people, "people");
 
   const timetable = obj(s.timetable, "timetable");

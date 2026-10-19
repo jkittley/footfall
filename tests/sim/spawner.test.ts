@@ -8,7 +8,7 @@ import { computeField } from "../../src/sim/routeField";
 import { onTrainArrived, reachableEntrances, sampleSlack } from "../../src/sim/spawner";
 import { stepTrains } from "../../src/sim/trains";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { entranceTiles, openAllGates, platformTiles, runMinutes, type XY } from "./helpers";
+import { entranceTiles, openEveryGate, platformTiles, runMinutes, type XY } from "./helpers";
 
 // Fields computed here from scratch, per grid and layout version, never through the world's cache.
 const fieldMemo = new WeakMap<Grid, Map<string, Float32Array>>();
@@ -112,8 +112,8 @@ test("spawn walks are measured on the layout as built at spawn", () => {
 
 test("an unobstructed station has a very high on-time rate", () => {
   const w = createWorld(5);
-  // All 4 gates: the 2 a station opens with are a deliberate bottleneck (tests/sim/gates.test.ts).
-  openAllGates(w);
+  // All 5 gates: the 2 a station opens with are a deliberate bottleneck (tests/sim/gates.test.ts).
+  openEveryGate(w);
   runMinutes(w, 6 * 60);
   let onTime = 0;
   let all = 0;
@@ -298,8 +298,8 @@ test("across seeds, the starting station (2 gates per island) stays mostly on ti
   expect(mean(rates)).toBeGreaterThanOrEqual(0.93);
 });
 
-test("across seeds, an unobstructed station stays on time (shared island walkways included, all 4 gates open)", () => {
-  const rates = seedRates(openAllGates);
+test("across seeds, an unobstructed station stays on time (shared island walkways included, all gates open)", () => {
+  const rates = seedRates(openEveryGate);
   for (const r of rates) expect(r).toBeGreaterThanOrEqual(0.965);
   expect(mean(rates)).toBeGreaterThanOrEqual(0.98);
 });

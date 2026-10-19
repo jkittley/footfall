@@ -228,7 +228,13 @@ test("opening platform 3 paints island 2; opening platform 4 changes no tiles", 
     [island.foot, Tile.Floor],
   ] as const)
     for (const [x, y] of tilesOf(r)) if (r !== island.walkway || y !== gateY) expect(w.grid.tile(x, y)).toBe(t);
-  expect(tilesOf(island.gateLine).map(([x, y]) => w.grid.tile(x, y))).toEqual([Tile.GateClosed, Tile.Gate, Tile.Gate, Tile.GateClosed]);
+  expect(tilesOf(island.gateLine).map(([x, y]) => w.grid.tile(x, y))).toEqual([
+    Tile.GateClosed,
+    Tile.Gate,
+    Tile.GateClosed,
+    Tile.Gate,
+    Tile.GateClosed,
+  ]);
   const v = w.grid.version;
   w.events.length = 0;
   addPlatform(w, 4);

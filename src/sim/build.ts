@@ -1,11 +1,12 @@
 import { PRICES, REMOVE_REFUND } from "./economy";
-import { FacilityKind, createFacility, refreshAccess, releasePerson, removeFacility, type Facility } from "./facilities";
+import { FacilityKind, createFacility, refreshAccess, releasePerson, removeFacility, serviceTilesOf, type Facility } from "./facilities";
 import { Dir, Tile, Zone, type Grid, type Rect } from "./grid";
+import { isIslandCentre, isPlatformEdge } from "./maps/harbourStreet";
 import { nudgeToWalkable } from "./movement";
 import { addSign, refreshSigns, type Sign } from "./needs";
 import { PState } from "./people";
 import { tileOf } from "./walk";
-import { activePlatformIds, waitingSpots, type World } from "./world";
+import { activePlatformIds, fieldTargets, waitingSpots, type World } from "./world";
 
 export type ToolId = "floor" | "retail" | "seating" | "toilet" | "wall" | "rail" | "gate" | "sign" | "travelator" | "remove";
 
@@ -112,9 +113,26 @@ function signTiles(w: World): Set<number> {
   return new Set(w.signs.map((s) => s.tile));
 }
 
-/** Unzoned floor with no sign on it: what everything but floor is built on. */
+/** Unzoned floor with no sign on it: what travelators are built on. */
 function plainFloor(w: World, signs: Set<number>, i: number): boolean {
   return w.grid.tiles[i] === Tile.Floor && w.grid.zones[i] === Zone.None && !signs.has(i);
+}
+
+/** Plain floor, or bare platform in an island's centre: what facilities, walls, rails and signs are built on. */
+function buildable(w: World, signs: Set<number>, i: number): boolean {
+  if (plainFloor(w, signs, i)) return true;
+  const g = w.grid;
+  const [x, y] = g.xy(i);
+  return g.tiles[i] === Tile.Platform && g.zones[i] === Zone.None && !signs.has(i) && isIslandCentre(w.map, x, y);
+}
+
+/** Tiles in the rect on a platform edge (beside a track, above the gate row) of an island already painted. */
+function edgeTiles(w: World, rect: Rect): number[] {
+  const g = w.grid;
+  return rectTiles(g, rect).filter((i) => {
+    const [x, y] = g.xy(i);
+    return g.tiles[i] === Tile.Platform && isPlatformEdge(w.map, x, y);
+  });
 }
 
 function isFoot(w: World, i: number): boolean {
@@ -185,7 +203,7 @@ function planFacility(w: World, plan: Plan, kind: FacilityKind): Plan {
   const pv = plan.preview;
   const r = pv.rect;
   const signs = signTiles(w);
-  for (const i of rectTiles(g, r)) (plainFloor(w, signs, i) ? pv.tiles : pv.blocked).push(i);
+  for (const i of rectTiles(g, r)) (buildable(w, signs, i) ? pv.tiles : pv.blocked).push(i);
   pv.cost = r.w * r.h * PRICE_OF[kind];
   plan.newFacility = kind;
   plan.edits = pv.tiles.map((i) => ({ i, zone: ZONE_OF[kind] }));
@@ -193,23 +211,18 @@ function planFacility(w: World, plan: Plan, kind: FacilityKind): Plan {
   const [short, long] = MIN_SIZE[kind];
   if (Math.min(r.w, r.h) < short || Math.max(r.w, r.h) < long) return refuse(plan, "Too small");
   if (pv.blocked.length > 0) return refuse(plan, "Must be on plain floor");
-  if (kind !== FacilityKind.Seating && !hasServiceTile(g, r)) return refuse(plan, "Needs a floor tile beside it");
+  if (kind !== FacilityKind.Seating && serviceTilesOf(g, w.map, r).length === 0) return refuse(plan, "Needs a floor tile beside it");
   return plan;
 }
 
-function hasServiceTile(g: Grid, r: Rect): boolean {
-  for (let x = r.x; x < r.x + r.w; x++) if (g.isWalkable(x, r.y - 1) || g.isWalkable(x, r.y + r.h)) return true;
-  for (let y = r.y; y < r.y + r.h; y++) if (g.isWalkable(r.x - 1, y) || g.isWalkable(r.x + r.w, y)) return true;
-  return false;
-}
-
-/** Walls, rails and travelators: a line one tile thick on plain floor. */
+/** Walls, rails and travelators: a line one tile thick on plain floor (walls and rails also on an island's centre). */
 function planLine(w: World, plan: Plan, tool: "wall" | "rail" | "travelator", dir: Dir | undefined): Plan {
   const g = w.grid;
   const pv = plan.preview;
   const r = pv.rect;
   const signs = signTiles(w);
-  for (const i of rectTiles(g, r)) (plainFloor(w, signs, i) ? pv.tiles : pv.blocked).push(i);
+  const fits = tool === "travelator" ? plainFloor : buildable;
+  for (const i of rectTiles(g, r)) (fits(w, signs, i) ? pv.tiles : pv.blocked).push(i);
   pv.cost = pv.tiles.length * LINE_PRICE[tool];
   if (tool === "travelator") {
     plan.edits = pv.tiles.map((i) => ({ i, zone: Zone.Travelator, dir: dir ?? Dir.None }));
@@ -232,7 +245,7 @@ function planSign(w: World, plan: Plan): Plan {
   const pv = plan.preview;
   const r = pv.rect;
   const signs = signTiles(w);
-  for (const i of rectTiles(w.grid, r)) (plainFloor(w, signs, i) ? pv.tiles : pv.blocked).push(i);
+  for (const i of rectTiles(w.grid, r)) (buildable(w, signs, i) ? pv.tiles : pv.blocked).push(i);
   pv.cost = PRICES.sign;
   if (pv.signKind === undefined) return refuse(plan, "Choose a sign");
   if (r.w !== 1 || r.h !== 1) return refuse(plan, "Pick one tile");
@@ -268,8 +281,9 @@ function gatesAfter(w: World, edits: readonly Edit[]): number[] {
 
 /**
  * Walls, rails, travelators and signs in the rect and every facility it touches come down, each
- * tile back to plain floor; plain floor in the rect (never a platform, entrance or apron) goes
- * back to ground; an open gate closes again, unless it is its island's last.
+ * tile back to what it was built on (plain floor, or platform on an island); plain floor in the
+ * rect (never a platform, entrance or apron) goes back to ground; an open gate closes again,
+ * unless it is its island's last.
  */
 function planRemove(w: World, plan: Plan): Plan {
   const g = w.grid;
@@ -305,7 +319,8 @@ function planRemove(w: World, plan: Plan): Plan {
       refund += PRICES.gate;
       changed.add(i);
     } else if (t === Tile.Wall || t === Tile.Rail) {
-      plan.edits.push({ i, tile: Tile.Floor });
+      const [x, y] = g.xy(i);
+      plan.edits.push({ i, tile: isIslandCentre(w.map, x, y) ? Tile.Platform : Tile.Floor });
       refund += t === Tile.Wall ? PRICES.wall : PRICES.rail;
       changed.add(i);
     } else if (g.zones[i] === Zone.Travelator) {
@@ -410,7 +425,8 @@ function currentRegions(g: Grid): Int32Array {
 function reachReason(w: World, after: Grid): string | null {
   const before = currentRegions(w.grid);
   const now = regions(after);
-  const platforms = activePlatformIds(w).map((id) => ({ id, tiles: rectTiles(w.grid, w.map.slots[id - 1]!.platform) }));
+  // Where its passengers board: built-on platform and the gate row do not count.
+  const platforms = activePlatformIds(w).map((id) => ({ id, tiles: fieldTargets(w, `platform:${id}`) }));
   const entrances = w.map.entrances.map((e) => ({ id: e.id, tiles: rectTiles(w.grid, e.tiles) }));
   const pairs = entrances.flatMap((e) =>
     platforms.filter((p) => shares(labelsOf(before, e.tiles), labelsOf(before, p.tiles))).map((p) => ({ e, p })),
@@ -441,6 +457,13 @@ function plan(w: World, tool: ToolId, rect: Rect, opts: BuildOpts): Plan {
     if (reserved.length > 0) {
       pv.blocked = [...new Set([...pv.blocked, ...reserved])].sort((a, b) => a - b);
       return refuse(p, "Reserved for a future platform");
+    }
+  }
+  if (tool !== "remove" && tool !== "floor" && tool !== "gate") {
+    const edge = edgeTiles(w, pv.rect);
+    if (edge.length > 0) {
+      pv.blocked = [...new Set([...pv.blocked, ...edge])].sort((a, b) => a - b);
+      return refuse(p, "Keep the platform edge clear");
     }
   }
   if (!pv.valid) return p;
@@ -478,6 +501,8 @@ export function applyPlacement(w: World, p: PlacementPreview): boolean {
   if (fresh.removedSigns.length > 0) w.signs = w.signs.filter((s) => !fresh.removedSigns.includes(s));
   if (fresh.newFacility !== null) createFacility(w, fresh.newFacility, pv.rect);
   else applyEdits(w.grid, fresh.edits, pv.tool === "travelator" ? w.nextId++ : -1);
+  // A gate that closes forgets its cadence, so one opened there later starts fresh.
+  for (const e of fresh.edits) if (e.tile === Tile.GateClosed) w.turnstiles.nextFree[e.i] = -Infinity;
   if (pv.tool === "sign" && pv.signKind !== undefined) addSign(w, pv.tiles[0]!, pv.signKind);
 
   for (const f of w.facilities.values()) refreshAccess(w, f);
@@ -498,7 +523,7 @@ function settlePeople(w: World): void {
   const label = currentRegions(g);
   const platformRegions = new Set<number>();
   for (const id of activePlatformIds(w))
-    for (const l of labelsOf(label, rectTiles(g, w.map.slots[id - 1]!.platform))) platformRegions.add(l);
+    for (const l of labelsOf(label, fieldTargets(w, `platform:${id}`))) platformRegions.add(l);
   const safeRegions = new Set<number>();
   for (const e of w.map.entrances)
     for (const l of labelsOf(label, rectTiles(g, e.tiles))) if (platformRegions.has(l)) safeRegions.add(l);

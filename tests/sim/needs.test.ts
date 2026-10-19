@@ -2,14 +2,14 @@ import { expect, test } from "vitest";
 import { DESPERATE_AFTER_MIN, SIM_DT } from "../../src/sim/constants";
 import { FacilityKind, TENANTS, Tenant, createFacility, tryJoin, type Facility } from "../../src/sim/facilities";
 import { Grid, Tile, type Rect } from "../../src/sim/grid";
-import { stepMovement } from "../../src/sim/movement";
+import { createTurnstiles, stepMovement } from "../../src/sim/movement";
 import { addSign, refreshSigns, stepNeeds } from "../../src/sim/needs";
 import { NEED_COUNT, Need, PState, PeopleStore } from "../../src/sim/people";
 import { Rng } from "../../src/sim/rng";
 import { CrowdGrid } from "../../src/sim/crowd";
 import { FieldCache, walkMinutes } from "../../src/sim/routeField";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { openAllGates, openFloor, runMinutes } from "./helpers";
+import { openEveryGate, openFloor, runMinutes } from "./helpers";
 
 // A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
 const ISLAND: Rect = { x: 60, y: 30, w: 20, h: 20 };
@@ -138,11 +138,12 @@ test("a desperate walker drifts off the straight route but still gets there", ()
   people.targetKey[i] = "end";
   people.speedMul[i] = 0.7;
   const rng = new Rng(3);
+  const turnstiles = createTurnstiles(grid.w * grid.h, people.x.length);
   let offRow = 0;
   let arrived = false;
   for (let n = 0; n < 20000 && !arrived; n++) {
     crowd.rebuild(people, grid);
-    arrived = stepMovement(grid, fields, () => targets, people, crowd, SIM_DT, rng).includes(i);
+    arrived = stepMovement(grid, fields, () => targets, people, crowd, turnstiles, SIM_DT, rng).includes(i);
     if (Math.floor(people.y[i]!) !== 4) offRow++;
   }
   expect(arrived).toBe(true);
@@ -237,8 +238,8 @@ test("needs rise at their rates, faster for waiting tiredness and leisure browsi
 
 test("errands never make a fair-deadline person miss on an empty map", () => {
   const w = createWorld(5);
-  // All 4 gates, so the island's foot is not the bottleneck under test.
-  openAllGates(w);
+  // All 5 gates, so the island's foot is not the bottleneck under test.
+  openEveryGate(w);
   // Floor east of the concourse for the units, joined to it along x = 16.
   for (let y = 56; y < 63; y++) for (let x = 16; x < 30; x++) w.grid.setTile(x, y, Tile.Floor);
   letTo(createFacility(w, FacilityKind.Retail, { x: 20, y: 60, w: 2, h: 2 }), Tenant.FoodDrink);
@@ -335,11 +336,12 @@ test("a desperate walker in a walled corridor only ever stands on walkable tiles
   people.targetKey[i] = "end";
   people.speedMul[i] = 0.7;
   const rng = new Rng(11);
+  const turnstiles = createTurnstiles(grid.w * grid.h, people.x.length);
   let arrived = false;
   let drifted = 0;
   for (let n = 0; n < 40000 && !arrived; n++) {
     crowd.rebuild(people, grid);
-    arrived = stepMovement(grid, fields, () => targets, people, crowd, SIM_DT, rng).includes(i);
+    arrived = stepMovement(grid, fields, () => targets, people, crowd, turnstiles, SIM_DT, rng).includes(i);
     expect(grid.isWalkable(Math.floor(people.x[i]!), Math.floor(people.y[i]!))).toBe(true);
     if (people.drift[i]! >= 0) drifted++;
   }

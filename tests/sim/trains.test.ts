@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import { createWorld, waitingSpots, walkableTargets, type World } from "../../src/sim/world";
 import { deactivatePlatform } from "../../src/sim/growth";
 import { stepTrains } from "../../src/sim/trains";
+import { applyPlacement, previewPlacement } from "../../src/sim/build";
 import { PState } from "../../src/sim/people";
 import { platformTiles, runMinutes } from "./helpers";
 
@@ -109,6 +110,19 @@ test("a platform-2 passenger waits on the right half and boards from it", () => 
   stepTrains(w);
   expect(w.people.isAlive(rightHalf)).toBe(false);
   expect(w.people.isAlive(wrongHalf)).toBe(true);
+});
+
+test("nobody boards from a seat built on their half of the island", () => {
+  const w = createWorld(2);
+  const x0 = w.map.islands[0]!.leftTrack.x;
+  const seat = previewPlacement(w, "seating", { x: x0 + 2, y: 30, w: 1, h: 2 });
+  expect(applyPlacement(w, seat)).toBe(true);
+  const onSeat = waitingAt(w, 1, [x0 + 2, 30]);
+  const onEdge = waitingAt(w, 1, [x0 + 1, 30]);
+  w.minute = firstService(w, 1).arriveAt + 1;
+  stepTrains(w);
+  expect(w.people.isAlive(onEdge)).toBe(false);
+  expect(w.people.isAlive(onSeat)).toBe(true);
 });
 
 test("waiting passengers stand on the track edge of their own platform's half", () => {

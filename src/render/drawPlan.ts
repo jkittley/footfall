@@ -212,13 +212,14 @@ function drawTrack(ctx: CanvasRenderingContext2D, g: Grid, v: View): void {
   ctx.stroke(rails);
 }
 
-/** A 2px line along every platform edge that faces track. */
+/** A 2px line along every platform edge that faces track, carried on past the gate row to the island's foot. */
 function drawPlatformEdges(ctx: CanvasRenderingContext2D, g: Grid, v: View): void {
   const p = new Path2D();
   const inset = 1;
   for (let y = v.y0; y < v.y1; y++) {
     for (let x = v.x0; x < v.x1; x++) {
-      if (g.tile(x, y) !== Tile.Platform) continue;
+      const t = g.tile(x, y);
+      if (t !== Tile.Platform && t !== Tile.Gate && t !== Tile.GateClosed) continue;
       const X0 = sx(v, x);
       const Y0 = sy(v, y);
       const X1 = sx(v, x + 1);

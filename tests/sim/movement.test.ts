@@ -4,7 +4,7 @@ import { GAME_MIN_PER_REAL_SEC } from "../../src/sim/constants";
 import { FieldCache, computeField, walkMinutes } from "../../src/sim/routeField";
 import { PState, PeopleStore } from "../../src/sim/people";
 import { CrowdGrid, speedFactor } from "../../src/sim/crowd";
-import { nudgeToWalkable, stepMovement } from "../../src/sim/movement";
+import { createTurnstiles, nudgeToWalkable, stepMovement, type Turnstiles } from "../../src/sim/movement";
 import { Rng } from "../../src/sim/rng";
 import { openFloor } from "./helpers";
 
@@ -14,6 +14,7 @@ interface Sim {
   targets: Map<string, number[]>;
   people: PeopleStore;
   crowd: CrowdGrid;
+  turnstiles: Turnstiles;
 }
 
 function sim(grid: Grid, targets: Record<string, number[]>, cap = 1000): Sim {
@@ -23,6 +24,7 @@ function sim(grid: Grid, targets: Record<string, number[]>, cap = 1000): Sim {
     targets: new Map(Object.entries(targets)),
     people: new PeopleStore(cap),
     crowd: new CrowdGrid(grid.w, grid.h),
+    turnstiles: createTurnstiles(grid.w * grid.h, cap),
   };
 }
 
@@ -38,7 +40,7 @@ function addPerson(s: Sim, x: number, y: number, key: string, state = PState.Wal
 
 function step(s: Sim, dt: number): number[] {
   s.crowd.rebuild(s.people, s.grid);
-  return stepMovement(s.grid, s.fields, (k) => s.targets.get(k) ?? [], s.people, s.crowd, dt);
+  return stepMovement(s.grid, s.fields, (k) => s.targets.get(k) ?? [], s.people, s.crowd, s.turnstiles, dt);
 }
 
 /** Steps until person `i` arrives; returns elapsed real seconds, or Infinity after `limit`. */

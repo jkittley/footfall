@@ -11,6 +11,7 @@ import {
 } from "./constants";
 import { PRICES, RENT_SHARE } from "./economy";
 import { Tile, Zone, type Grid, type Rect } from "./grid";
+import { isIslandCentre, isPlatformEdge, type StationMap } from "./maps/harbourStreet";
 import { NEED_COUNT, Need, PState, type PeopleStore } from "./people";
 import { FacilityKind, Tenant } from "./facilityKinds";
 import { refreshSigns } from "./needs";
@@ -84,10 +85,11 @@ function inRect(r: Rect, x: number, y: number): boolean {
   return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
 }
 
-function serviceTilesOf(grid: Grid, r: Rect): number[] {
+/** Walkable tiles orthogonally next to `r`, but never a gate or a platform edge: those are kept for passing through and boarding. */
+export function serviceTilesOf(grid: Grid, map: StationMap, r: Rect): number[] {
   const out = new Set<number>();
   const add = (x: number, y: number): void => {
-    if (grid.isWalkable(x, y)) out.add(grid.idx(x, y));
+    if (grid.isWalkable(x, y) && grid.tile(x, y) !== Tile.Gate && !isPlatformEdge(map, x, y)) out.add(grid.idx(x, y));
   };
   for (let x = r.x; x < r.x + r.w; x++) {
     add(x, r.y - 1);
@@ -100,19 +102,20 @@ function serviceTilesOf(grid: Grid, r: Rect): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
-/** Plain floor a queue may stand on: walkable, unzoned, not a platform or a gate. */
-function queueable(grid: Grid, x: number, y: number): boolean {
+/** Where a queue may stand: walkable and unzoned, not a gate, and not platform unless in an island's centre. */
+function queueable(grid: Grid, map: StationMap, x: number, y: number): boolean {
   const t = grid.tile(x, y);
-  return grid.isWalkable(x, y) && grid.zone(x, y) === Zone.None && t !== Tile.Platform && t !== Tile.Gate;
+  if (!grid.isWalkable(x, y) || grid.zone(x, y) !== Zone.None || t === Tile.Gate) return false;
+  return t !== Tile.Platform || isIslandCentre(map, x, y);
 }
 
 /**
  * A line of up to MAX_QUEUE_TILES tiles from `start` heading away from the rect: straight on
  * while it can, otherwise turning (away from the rect's centre first).
  */
-function growLine(grid: Grid, r: Rect, start: number): number[] {
+function growLine(grid: Grid, map: StationMap, r: Rect, start: number): number[] {
   const [sx, sy] = grid.xy(start);
-  if (!queueable(grid, sx, sy)) return [];
+  if (!queueable(grid, map, sx, sy)) return [];
   let dx = sx < r.x ? -1 : sx >= r.x + r.w ? 1 : 0;
   let dy = dx !== 0 ? 0 : sy < r.y ? -1 : 1;
   const cx = r.x + r.w / 2;
@@ -133,7 +136,7 @@ function growLine(grid: Grid, r: Rect, start: number): number[] {
       const nx = x + mx;
       const ny = y + my;
       const n = grid.idx(nx, ny);
-      if (inRect(r, nx, ny) || !queueable(grid, nx, ny) || used.has(n)) continue;
+      if (inRect(r, nx, ny) || !queueable(grid, map, nx, ny) || used.has(n)) continue;
       line.push(n);
       used.add(n);
       x = nx;
@@ -148,10 +151,10 @@ function growLine(grid: Grid, r: Rect, start: number): number[] {
   return line;
 }
 
-function queueTilesOf(grid: Grid, r: Rect, service: readonly number[]): number[] {
+function queueTilesOf(grid: Grid, map: StationMap, r: Rect, service: readonly number[]): number[] {
   let best: number[] = [];
   for (const s of service) {
-    const line = growLine(grid, r, s);
+    const line = growLine(grid, map, r, s);
     if (line.length > best.length) best = line;
   }
   return best;
@@ -162,13 +165,13 @@ export function createFacility(w: World, kind: FacilityKind, rect: Rect): Facili
   for (let y = rect.y; y < rect.y + rect.h; y++)
     for (let x = rect.x; x < rect.x + rect.w; x++) w.grid.setZone(x, y, ZONE_OF[kind], id);
   const area = rect.w * rect.h;
-  const serviceTiles = kind === FacilityKind.Seating ? [] : serviceTilesOf(w.grid, rect);
+  const serviceTiles = kind === FacilityKind.Seating ? [] : serviceTilesOf(w.grid, w.map, rect);
   const f: Facility = {
     id,
     kind,
     rect: { ...rect },
     serviceTiles,
-    queueTiles: kind === FacilityKind.Seating ? [] : queueTilesOf(w.grid, rect, serviceTiles),
+    queueTiles: kind === FacilityKind.Seating ? [] : queueTilesOf(w.grid, w.map, rect, serviceTiles),
     tenant: Tenant.None,
     tenantAt: kind === FacilityKind.Retail ? w.minute + TENANT_DELAY_MIN : -1,
     footfall: { commuter: 0, leisure: 0 },
@@ -191,8 +194,8 @@ export function createFacility(w: World, kind: FacilityKind, rect: Rect): Facili
 export function refreshAccess(w: World, f: Facility): void {
   if (f.kind === FacilityKind.Seating) return;
   const p = w.people;
-  f.serviceTiles = serviceTilesOf(w.grid, f.rect);
-  f.queueTiles = queueTilesOf(w.grid, f.rect, f.serviceTiles);
+  f.serviceTiles = serviceTilesOf(w.grid, w.map, f.rect);
+  f.queueTiles = queueTilesOf(w.grid, w.map, f.rect, f.serviceTiles);
   prune(p, f, PState.InFacility);
   const line = new Set(f.queueTiles);
   let n = 0;
