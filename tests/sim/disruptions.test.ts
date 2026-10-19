@@ -1,8 +1,9 @@
 import { expect, test } from "vitest";
 import { DISRUPTION_REFUND_FACTOR, REFUND } from "../../src/sim/economy";
 import { startDisruption, stepDisruptions } from "../../src/sim/disruptions";
+import { addPlatform, deactivatePlatform, reactivatePlatform, shrink } from "../../src/sim/growth";
 import { PState } from "../../src/sim/people";
-import { createWorld, step, type World } from "../../src/sim/world";
+import { activePlatformIds, createWorld, step, type World } from "../../src/sim/world";
 import { platformTiles, runMinutes } from "./helpers";
 
 function booked(w: World, platformId: number, serviceId: number, n = 1): number[] {
@@ -41,12 +42,52 @@ test("a disruption closes platforms and cancels their services in the window", (
   expect(inWindow).toBeGreaterThan(0);
   expect(toasts(w)).toEqual([d.text]);
 
-  // Services the horizon adds while it runs are cancelled too, and the end is announced once.
   runMinutes(w, 100);
-  for (const s of w.timetable.services.values()) {
-    if (s.platformId === 2 && s.departAt >= d.startsAt && s.departAt <= d.endsAt) expect(s.cancelled).toBe(true);
-  }
   expect(toasts(w).filter((t) => t === "Platform 2 reopens")).toHaveLength(1);
+});
+
+test("services the horizon adds while it runs are cancelled too", () => {
+  const w = createWorld(5);
+  const d = startDisruption(w, [2], 90);
+  deactivatePlatform(w, 2);
+  reactivatePlatform(w, 2);
+  const firstNew = w.timetable.nextId;
+  step(w, 1 / 30);
+  const fresh = [...w.timetable.services.values()].filter((s) => s.id >= firstNew && s.platformId === 2);
+  const inWindow = fresh.filter((s) => s.departAt <= d.endsAt);
+  expect(inWindow.length).toBeGreaterThan(0);
+  for (const s of inWindow) {
+    expect(s.cancelled).toBe(true);
+    expect(s.cancelReason).toBe("disruption");
+  }
+});
+
+test("a train already standing at the platform leaves on time", () => {
+  const w = createWorld(9);
+  const s = w.timetable.upcoming(2, w.minute)[0]!;
+  w.minute = s.arriveAt + 1;
+  const [who] = booked(w, 2, s.id);
+  startDisruption(w, [2], 90);
+  expect(s.cancelled).toBe(false);
+  expect(w.events.filter((e) => e.kind === "outcome")).toHaveLength(0);
+  expect(w.people.serviceId[who!]).toBe(s.id);
+});
+
+test("the end toast names only platforms still active", () => {
+  const w = createWorld(10);
+  const d = startDisruption(w, [1, 2], 60);
+  deactivatePlatform(w, 2);
+  w.events.length = 0;
+  w.minute = d.endsAt;
+  stepDisruptions(w, 0);
+  expect(toasts(w)).toEqual(["Platform 1 reopens"]);
+  const w2 = createWorld(10);
+  const d2 = startDisruption(w2, [2], 60);
+  deactivatePlatform(w2, 2);
+  w2.events.length = 0;
+  w2.minute = d2.endsAt;
+  stepDisruptions(w2, 0);
+  expect(toasts(w2)).toEqual([]);
 });
 
 test("text lists two and three platforms", () => {
@@ -79,22 +120,54 @@ test("services resume after the disruption ends", () => {
   const s = w.timetable.upcoming(2, w.minute)[0]!;
   const ids = booked(w, 2, s.id, 30);
   const d = startDisruption(w, [2], 90);
-  // Those who wait are booked onto a service after the closure, on the same platform.
-  const waiting = ids.filter((i) => w.people.isAlive(i) && w.people.goalKey[i] === "platform:2");
+  const waiting = ids.filter((i) => w.people.goalKey[i] === "platform:2" && w.timetable.services.get(w.people.serviceId[i]!)?.platformId === 2);
   expect(waiting.length).toBeGreaterThan(0);
-  for (const i of waiting) {
-    const next = w.timetable.services.get(w.people.serviceId[i]!)!;
-    expect(next.platformId).toBe(2);
+  expect(waiting.length).toBeLessThan(ids.length);
+  const services = new Set(waiting.map((i) => w.people.serviceId[i]!));
+  for (const id of services) {
+    const next = w.timetable.services.get(id)!;
     expect(next.cancelled).toBe(false);
     expect(next.departAt).toBeGreaterThan(d.endsAt);
   }
-  // The rest were rebooked onto the open platform.
-  for (const i of ids) {
-    if (!w.people.isAlive(i)) continue;
-    expect(w.timetable.services.get(w.people.serviceId[i]!)?.cancelled ?? false).toBe(false);
+  const lastDepart = Math.max(...[...services].map((id) => w.timetable.services.get(id)!.departAt));
+  // Track each waiter until it leaves the store, counting the outcomes it emits meanwhile.
+  const outcomes = new Map<number, number>();
+  const tracked = new Set(waiting);
+  const freed = new Set<number>();
+  let seen = w.events.length;
+  while (w.minute < lastDepart + 2) {
+    step(w, 1 / 30);
+    for (; seen < w.events.length; seen++) {
+      const e = w.events[seen]!;
+      if (e.kind === "outcome" && tracked.has(e.personId)) outcomes.set(e.personId, (outcomes.get(e.personId) ?? 0) + 1);
+    }
+    for (const i of tracked) if (!w.people.isAlive(i)) { tracked.delete(i); freed.add(i); }
   }
-  runMinutes(w, 95);
+  // The excluded outcome came at the start (before tracking); boarding or missing adds nothing.
+  for (const i of waiting) expect(outcomes.get(i) ?? 0).toBe(0);
+  expect(freed.size).toBe(waiting.length);
   expect(w.timetable.upcoming(2, w.minute).length).toBeGreaterThan(0);
+});
+
+test("growth will not close the last platform outside the disruption", () => {
+  const w = createWorld(11);
+  addPlatform(w, 3);
+  addPlatform(w, 4);
+  startDisruption(w, [1, 2, 3], 60);
+  expect(shrink(w)).toBe(false);
+  expect(w.platformActive[3]).toBe(true);
+});
+
+test("with three or more active platforms at least one stays open", () => {
+  const w = createWorld(12);
+  addPlatform(w, 3);
+  addPlatform(w, 4);
+  addPlatform(w, 5);
+  w.rng.next = () => 0;
+  stepDisruptions(w, 1);
+  const d = w.disruptions[0]!;
+  expect(d.platforms.length).toBe(1);
+  expect(activePlatformIds(w).filter((id) => !d.platforms.includes(id)).length).toBeGreaterThanOrEqual(1);
 });
 
 test("only one disruption runs at a time and at least one platform stays open", () => {

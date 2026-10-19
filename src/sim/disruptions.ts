@@ -1,8 +1,7 @@
 import { minuteOfDay } from "./clock";
 import { DISRUPTIONS_PER_DAY, DISRUPTION_MAX_MIN, DISRUPTION_MIN_MIN, MIN_SLACK_MINUTES } from "./constants";
-import { rebook, sendToExit, type RebookContext } from "./spawner";
+import { fairWalk, rebook, sendToExit, type RebookContext } from "./spawner";
 import { DESTINATIONS, type Service } from "./timetable";
-import { walkMinutes } from "./routeField";
 import { activePlatformIds, fieldTargets, recordOutcome, type World } from "./world";
 
 /** The running disruption plus this many of the most recent ended ones are kept for the UI. */
@@ -66,7 +65,7 @@ function cancelServices(w: World, d: Disruption): void {
   const closed = new Set(d.platforms);
   const cancelled = new Map<number, Service>();
   for (const s of w.timetable.services.values()) {
-    if (s.cancelled || !closed.has(s.platformId) || s.departAt < d.startsAt || s.departAt > d.endsAt) continue;
+    if (s.cancelled || !closed.has(s.platformId) || s.arriveAt <= d.startsAt || s.departAt > d.endsAt) continue;
     s.cancelled = true;
     s.cancelReason = "disruption";
     cancelled.set(s.id, s);
@@ -100,12 +99,9 @@ function waitForReopening(w: World, i: number, platformId: number, endsAt: numbe
   const p = w.people;
   const tile = Math.floor(p.y[i]!) * w.grid.w + Math.floor(p.x[i]!);
   const field = w.fields.get(`platform:${platformId}`, () => fieldTargets(w, `platform:${platformId}`));
-  const walk = Math.fround(walkMinutes(field, tile));
-  const next = Number.isFinite(walk)
-    ? w.timetable
-        .upcoming(platformId, endsAt)
-        .find((s) => s.departAt >= w.minute + walk + MIN_SLACK_MINUTES)
-    : undefined;
+  const next = w.timetable
+    .upcoming(platformId, endsAt)
+    .find((s) => fairWalk(w, s, field, tile, MIN_SLACK_MINUTES) !== null);
   if (next) {
     p.serviceId[i] = next.id;
     p.deadline[i] = next.departAt;
@@ -121,8 +117,11 @@ export function stepDisruptions(w: World, dtMin: number): void {
   if (running) {
     if (w.minute >= running.endsAt) {
       running.ended = true;
-      const verb = running.platforms.length === 1 ? "reopens" : "reopen";
-      w.events.push({ kind: "toast", text: `${platformList(running.platforms)} ${verb}` });
+      const open = running.platforms.filter((id) => w.platformActive[id - 1]);
+      if (open.length > 0) {
+        const verb = open.length === 1 ? "reopens" : "reopen";
+        w.events.push({ kind: "toast", text: `${platformList(open)} ${verb}` });
+      }
     } else {
       cancelServices(w, running);
     }

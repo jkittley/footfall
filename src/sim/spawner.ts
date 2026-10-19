@@ -37,6 +37,12 @@ function platformFields(w: World, active: readonly number[]): Map<number, Float3
   return out;
 }
 
+/** The Float32-rounded walk from `tile` to the service's platform if the departure leaves `slack` to spare, else null. */
+export function fairWalk(w: World, s: Service, field: Float32Array, tile: number, slack: number): number | null {
+  const walk = Math.fround(walkMinutes(field, tile));
+  return Number.isFinite(walk) && s.departAt >= w.minute + walk + slack ? walk : null;
+}
+
 /**
  * A service on an active platform (other than `notPlatform`) that a passenger at `tile` reaches
  * with `slack` to spare walking unimpeded: random among the first SERVICE_CHOICES to depart.
@@ -55,8 +61,8 @@ function pickService(
     if (s.platformId === notPlatform) continue;
     const field = fields.get(s.platformId);
     if (!field) continue;
-    const walk = Math.fround(walkMinutes(field, tile));
-    if (!Number.isFinite(walk) || s.departAt < w.minute + walk + slack) continue;
+    const walk = fairWalk(w, s, field, tile, slack);
+    if (walk === null) continue;
     fits.push({ service: s, walk });
     if (fits.length === SERVICE_CHOICES) break;
   }

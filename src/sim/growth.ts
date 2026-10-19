@@ -12,7 +12,7 @@ import { paintSlot, type PlatformSlot } from "./maps/harbourStreet";
 import { nudgeToWalkable } from "./movement";
 import { refreshSigns } from "./needs";
 import { rebook, rebookContext } from "./spawner";
-import type { World } from "./world";
+import { activePlatformIds, type World } from "./world";
 
 /** Platforms added at which the subway stage unlocks. */
 const SUBWAY_AT_PLATFORMS = 10;
@@ -119,15 +119,22 @@ function grow(w: World): boolean {
 }
 
 /** Closes the highest active platform above the starting ones; false if there is none. */
-function shrink(w: World): boolean {
+export function shrink(w: World): boolean {
   for (let id = w.platformsAdded; id > w.map.startingPlatforms; id--) {
     if (w.platformActive[id - 1]) {
+      if (!staysOpen(w, id)) return false;
       deactivatePlatform(w, id);
       w.events.push({ kind: "toast", text: `Platform ${id} is closed: too many people missed their trains` });
       return true;
     }
   }
   return false;
+}
+
+/** True if some other active platform would remain outside the running disruption. */
+function staysOpen(w: World, closing: number): boolean {
+  const running = w.disruptions.find((d) => !d.ended && w.minute < d.endsAt);
+  return activePlatformIds(w).some((id) => id !== closing && !running?.platforms.includes(id));
 }
 
 /**
