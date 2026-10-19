@@ -1,4 +1,4 @@
-import { Dir, Grid, Zone } from "./grid";
+import { Dir, Grid, Tile, Zone } from "./grid";
 import {
   DENSITY_WEIGHT,
   GAME_MIN_PER_REAL_SEC,
@@ -35,11 +35,24 @@ export function stepCost(grid: Grid, from: number, to: number): number {
   return cost;
 }
 
-/** True if a step (dx, dy) from (x, y) lands on a walkable tile without cutting a corner. */
+/**
+ * True if a step (dx, dy) from (x, y) lands on a walkable tile without cutting a corner. Gates are
+ * walked straight through: no diagonal step touches one and nobody steps from one gate to the next,
+ * so every crossing is one entry through one turnstile.
+ */
 function canStep(grid: Grid, x: number, y: number, dx: number, dy: number): boolean {
   if (!grid.isWalkable(x + dx, y + dy)) return false;
-  if (dx !== 0 && dy !== 0) return grid.isWalkable(x + dx, y) && grid.isWalkable(x, y + dy);
+  if (grid.tile(x, y) === Tile.Gate && grid.tile(x + dx, y + dy) === Tile.Gate) return false;
+  if (dx !== 0 && dy !== 0) {
+    return grid.isWalkable(x + dx, y) && grid.isWalkable(x, y + dy) && !diagonalTouchesGate(grid, x, y, x + dx, y + dy);
+  }
   return true;
+}
+
+/** True if any of the four tiles a diagonal step from (fx, fy) to (tx, ty) touches is a gate. */
+export function diagonalTouchesGate(grid: Grid, fx: number, fy: number, tx: number, ty: number): boolean {
+  const g = Tile.Gate;
+  return grid.tile(fx, fy) === g || grid.tile(tx, ty) === g || grid.tile(tx, fy) === g || grid.tile(fx, ty) === g;
 }
 
 // Shared binary min-heap (lazy deletion) over typed arrays; grown on demand, never shrunk.

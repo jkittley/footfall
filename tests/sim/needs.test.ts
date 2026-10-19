@@ -9,7 +9,7 @@ import { Rng } from "../../src/sim/rng";
 import { CrowdGrid } from "../../src/sim/crowd";
 import { FieldCache, walkMinutes } from "../../src/sim/routeField";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { openFloor, runMinutes } from "./helpers";
+import { openAllGates, openFloor, runMinutes } from "./helpers";
 
 // A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
 const ISLAND: Rect = { x: 60, y: 30, w: 20, h: 20 };
@@ -237,6 +237,8 @@ test("needs rise at their rates, faster for waiting tiredness and leisure browsi
 
 test("errands never make a fair-deadline person miss on an empty map", () => {
   const w = createWorld(5);
+  // All 4 gates, so the island's foot is not the bottleneck under test.
+  openAllGates(w);
   // Floor east of the concourse for the units, joined to it along x = 16.
   for (let y = 56; y < 63; y++) for (let x = 16; x < 30; x++) w.grid.setTile(x, y, Tile.Floor);
   letTo(createFacility(w, FacilityKind.Retail, { x: 20, y: 60, w: 2, h: 2 }), Tenant.FoodDrink);

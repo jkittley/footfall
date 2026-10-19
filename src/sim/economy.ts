@@ -32,6 +32,7 @@ export const PRICES = {
   rail: 15,
   sign: 150,
   travelator: 600,
+  gate: 500,
   evict: 2000,
 } as const;
 
@@ -44,6 +45,7 @@ export const UPKEEP_PER_DAY = {
   rail: 0.5,
   sign: 5,
   travelator: 20,
+  gate: 15,
 } as const;
 
 export const RENT_SHARE = 0.2;
@@ -139,6 +141,9 @@ export function dailyUpkeep(w: World): number {
         break;
       case Tile.Rail:
         total += UPKEEP_PER_DAY.rail;
+        break;
+      case Tile.Gate:
+        total += UPKEEP_PER_DAY.gate;
         break;
       default:
         break;

@@ -102,4 +102,21 @@ describe("route fields", () => {
     expect(n).not.toBe(g.idx(2, 1));
     expect(f[n]!).toBeLessThan(f[g.idx(1, 1)]!);
   });
+
+  test("a gate tile costs a plain step: the unimpeded walk leaves out turnstile waits", () => {
+    const plain = strip(10);
+    const gated = strip(10);
+    gated.setTile(5, 0, Tile.Gate);
+    const from = plain.idx(0, 0);
+    expect(computeField(gated, [gated.idx(9, 0)])[from]).toBe(computeField(plain, [plain.idx(9, 0)])[from]);
+  });
+
+  test("no diagonal step touches a gate tile", () => {
+    const g = openFloor(3, 3);
+    g.setTile(1, 1, Tile.Gate);
+    const f = computeField(g, [g.idx(2, 2)]);
+    // Round the gate's side rather than slanting through or past it.
+    expect(f[g.idx(1, 1)]).toBe(2);
+    expect(f[g.idx(0, 0)]).toBe(4);
+  });
 });

@@ -354,3 +354,39 @@ test("an unopened slot's track and platform are reserved; its foot takes floor o
     "Reserved for a future platform",
   );
 });
+
+test("Gate tool opens a closed slot, costs 500, and remove refuses the last gate", () => {
+  const w = createWorld(1);
+  const line = w.map.islands[0]!.gateLine;
+  const outer = { x: line.x, y: line.y, w: 1, h: 1 };
+  const middle = { x: line.x + 1, y: line.y, w: 1, h: 1 };
+  const other = { x: line.x + 2, y: line.y, w: 1, h: 1 };
+  expect(PRICES.gate).toBe(500);
+
+  const open = previewPlacement(w, "gate", outer);
+  expect(open).toMatchObject({ valid: true, reason: null, cost: 500, tiles: [w.grid.idx(line.x, line.y)] });
+  const before = w.ledger.balance;
+  expect(applyPlacement(w, open)).toBe(true);
+  expect(w.grid.tile(line.x, line.y)).toBe(Tile.Gate);
+  expect(w.ledger.balance).toBe(before - 500);
+
+  expect(previewPlacement(w, "gate", middle).valid).toBe(false);
+  expect(previewPlacement(w, "gate", { x: line.x, y: line.y - 1, w: 1, h: 1 }).valid).toBe(false);
+  expect(previewPlacement(w, "gate", { x: line.x + 3, y: line.y, w: 1, h: 1 }).valid).toBe(true);
+  expect(previewPlacement(w, "gate", { ...outer, w: 2 }).reason).toBe("Pick one tile");
+  const unopened = w.map.islands[1]!.gateLine;
+  expect(previewPlacement(w, "gate", { x: unopened.x, y: unopened.y, w: 1, h: 1 }).valid).toBe(false);
+
+  const close = previewPlacement(w, "remove", middle);
+  expect(close).toMatchObject({ valid: true, cost: -REMOVE_REFUND * PRICES.gate });
+  expect(applyPlacement(w, close)).toBe(true);
+  expect(w.grid.tile(line.x + 1, line.y)).toBe(Tile.GateClosed);
+  expect(applyPlacement(w, previewPlacement(w, "remove", outer))).toBe(true);
+  expect(w.grid.tile(line.x, line.y)).toBe(Tile.GateClosed);
+
+  const last = previewPlacement(w, "remove", other);
+  expect(last.valid).toBe(false);
+  expect(last.reason).toBe("An island needs at least one gate");
+  expect(previewPlacement(w, "remove", line).reason).toBe("An island needs at least one gate");
+  expect(previewPlacement(w, "remove", outer).reason).toBe("Nothing to remove here");
+});

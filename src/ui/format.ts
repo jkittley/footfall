@@ -16,6 +16,7 @@ export const TOOL_NAMES: Record<ToolId, string> = {
   toilet: "Toilets",
   wall: "Wall",
   rail: "Queue rail",
+  gate: "Gate",
   sign: "Sign",
   travelator: "Travelator",
   remove: "Remove",
@@ -79,8 +80,9 @@ export interface Tooltip {
 
 /** "New floor · 88 tiles · £8,800 · you have £12,450", or "Remove · 6 tiles · +£300". */
 export function placementTooltip(pv: PlacementPreview, balance: number): Tooltip {
-  const facility = pv.tool === "retail" || pv.tool === "toilet" || pv.tool === "seating";
-  const n = facility ? pv.rect.w * pv.rect.h : pv.tiles.length;
+  // A facility or gate counts its whole rect, so the tooltip reads the same over a tile it can't take.
+  const whole = pv.tool === "retail" || pv.tool === "toilet" || pv.tool === "seating" || pv.tool === "gate";
+  const n = whole ? pv.rect.w * pv.rect.h : pv.tiles.length;
   const tiles = `${formatCount(n)} ${n === 1 ? "tile" : "tiles"}`;
   const reason = pv.valid ? null : pv.reason;
   if (pv.tool === "remove") return { text: `Remove · ${tiles} · ${formatSignedMoney(-pv.cost)}`, reason };

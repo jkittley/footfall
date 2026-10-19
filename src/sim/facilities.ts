@@ -100,9 +100,10 @@ function serviceTilesOf(grid: Grid, r: Rect): number[] {
   return [...out].sort((a, b) => a - b);
 }
 
-/** Plain floor a queue may stand on: walkable, unzoned, not a platform. */
+/** Plain floor a queue may stand on: walkable, unzoned, not a platform or a gate. */
 function queueable(grid: Grid, x: number, y: number): boolean {
-  return grid.isWalkable(x, y) && grid.zone(x, y) === Zone.None && grid.tile(x, y) !== Tile.Platform;
+  const t = grid.tile(x, y);
+  return grid.isWalkable(x, y) && grid.zone(x, y) === Zone.None && t !== Tile.Platform && t !== Tile.Gate;
 }
 
 /**

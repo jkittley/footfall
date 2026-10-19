@@ -158,6 +158,12 @@ export function corridorWithWall(): Grid {
   return g;
 }
 
+/** Opens every closed slot in an island's gate line, so its foot is no bottleneck. */
+export function openAllGates(w: World, islandId = 1): void {
+  const line = w.map.islands[islandId - 1]!.gateLine;
+  for (const [x, y] of tilesOf(line)) if (w.grid.tile(x, y) === Tile.GateClosed) w.grid.setTile(x, y, Tile.Gate);
+}
+
 /** Steps the world at SIM_DT until its clock has advanced by `minutes`. */
 export function runMinutes(w: World, minutes: number): void {
   const until = w.minute + minutes;

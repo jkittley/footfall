@@ -184,3 +184,14 @@ test("todayTotals sums income and cost lines without closing the day", () => {
   expect(l.todayTotals()).toEqual({ income: 60, costs: 312 });
   expect(l.today.build).toBe(300);
 });
+
+test("gate upkeep is counted", () => {
+  const w = createWorld(1);
+  const g = new Grid(3, 1);
+  w.grid = g;
+  g.setTile(0, 0, Tile.Gate);
+  g.setTile(1, 0, Tile.Gate);
+  g.setTile(2, 0, Tile.GateClosed);
+  expect(UPKEEP_PER_DAY.gate).toBe(15);
+  expect(dailyUpkeep(w)).toBe(2 * UPKEEP_PER_DAY.gate);
+});

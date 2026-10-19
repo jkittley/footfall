@@ -1,9 +1,9 @@
-import { Dir, Grid, Zone } from "./grid";
-import { DRIFT_PER_TILE, TRAVELATOR_COST, WALK_TILES_PER_SEC } from "./constants";
+import { Dir, Grid, Tile, Zone } from "./grid";
+import { DRIFT_PER_TILE, GATE_INTERVAL_SEC, TRAVELATOR_COST, WALK_TILES_PER_SEC } from "./constants";
 import { CrowdGrid, speedFactor } from "./crowd";
 import { PState, type PeopleStore } from "./people";
 import type { Rng } from "./rng";
-import { nextStep, type FieldCache } from "./routeField";
+import { diagonalTouchesGate, nextStep, type FieldCache } from "./routeField";
 
 /** No sub-step moves further than this (tiles), so a large dt cannot jump a wall. */
 const MAX_SUBSTEP = 0.4;
@@ -40,6 +40,12 @@ function riding(grid: Grid, tile: number, dx: number, dy: number): boolean {
   return dx * DIR_DX[d]! + dy * DIR_DY[d]! > 0;
 }
 
+/** Speed for a sub-step starting on `tile` heading (dx, dy): faster riding a travelator; in a gate, uncrowded walking. */
+function subStepSpeed(grid: Grid, tile: number, dx: number, dy: number, base: number, gateSpeed: number): number {
+  if (grid.tiles[tile] === Tile.Gate) return gateSpeed;
+  return riding(grid, tile, dx, dy) ? base / TRAVELATOR_COST : base;
+}
+
 /**
  * True if a straight move from (ax, ay) to (bx, by), at most one tile apart on each axis,
  * touches only walkable tiles (a diagonal tile change needs both side tiles open too).
@@ -50,8 +56,75 @@ function canMove(grid: Grid, ax: number, ay: number, bx: number, by: number): bo
   const tx = Math.floor(bx);
   const ty = Math.floor(by);
   if (!grid.isWalkable(tx, ty)) return false;
-  if (tx !== fx && ty !== fy) return grid.isWalkable(tx, fy) && grid.isWalkable(fx, ty);
+  if ((tx !== fx || ty !== fy) && grid.tile(fx, fy) === Tile.Gate && grid.tile(tx, ty) === Tile.Gate) return false;
+  if (tx !== fx && ty !== fy) return grid.isWalkable(tx, fy) && grid.isWalkable(fx, ty) && !diagonalTouchesGate(grid, fx, fy, tx, ty);
   return true;
+}
+
+/** A grid's turnstiles: the real seconds stepped so far, and when each gate tile next admits someone. */
+interface Turnstiles {
+  clock: number;
+  nextFree: Float64Array;
+}
+
+// Kept per grid rather than on the world, so every caller of stepMovement gets the cadence.
+const turnstilesOf = new WeakMap<Grid, Turnstiles>();
+
+function turnstilesFor(grid: Grid): Turnstiles {
+  let ts = turnstilesOf.get(grid);
+  if (!ts || ts.nextFree.length !== grid.w * grid.h) {
+    ts = { clock: 0, nextFree: new Float64Array(grid.w * grid.h).fill(-Infinity) };
+    turnstilesOf.set(grid, ts);
+  }
+  return ts;
+}
+
+/** The turnstiles as saved: the clock, and each gate tile's next-free time where it has one. */
+export interface TurnstileSave {
+  clock: number;
+  gates: [number, number][];
+}
+
+export function saveTurnstiles(grid: Grid): TurnstileSave {
+  const ts = turnstilesFor(grid);
+  const gates: [number, number][] = [];
+  ts.nextFree.forEach((t, i) => {
+    if (Number.isFinite(t)) gates.push([i, t]);
+  });
+  return { clock: ts.clock, gates };
+}
+
+/** Puts saved turnstiles back on `grid`; throws `Corrupt save: turnstiles` on a tile off the grid. */
+export function restoreTurnstiles(grid: Grid, s: TurnstileSave): void {
+  const ts = turnstilesFor(grid);
+  ts.clock = s.clock;
+  ts.nextFree.fill(-Infinity);
+  for (const [i, t] of s.gates) {
+    if (!Number.isInteger(i) || i < 0 || i >= ts.nextFree.length) throw new Error("Corrupt save: turnstiles");
+    ts.nextFree[i] = t;
+  }
+}
+
+/**
+ * Real seconds to wait, from turnstile clock `now`, before stepping from tile `from` onto tile
+ * `to`: 0 unless `to` is a gate being entered, else until GATE_INTERVAL_SEC has passed since its last entry.
+ */
+function gateWait(ts: Turnstiles, grid: Grid, from: number, to: number, now: number): number {
+  if (to === from || grid.tiles[to] !== Tile.Gate) return 0;
+  const wait = ts.nextFree[to]! - now;
+  return wait > EPS_TIME ? wait : 0;
+}
+
+/** A step from tile `from` onto tile `to` at turnstile clock `now`: entering a gate starts its interval. */
+function noteEntry(ts: Turnstiles, grid: Grid, from: number, to: number, now: number): void {
+  if (to !== from && grid.tiles[to] === Tile.Gate) ts.nextFree[to] = now + GATE_INTERVAL_SEC;
+}
+
+/** True if a straight move from (ax, ay) to (bx, by) is open and needs no wait at a gate. */
+function canMoveAs(ts: Turnstiles, grid: Grid, ax: number, ay: number, bx: number, by: number, now: number): boolean {
+  if (!canMove(grid, ax, ay, bx, by)) return false;
+  const from = Math.floor(ay) * grid.w + Math.floor(ax);
+  return gateWait(ts, grid, from, Math.floor(by) * grid.w + Math.floor(bx), now) === 0;
 }
 
 /** A random walkable neighbour of (x, y), 8-way without cutting corners; -1 if none. */
@@ -80,6 +153,9 @@ function randomNeighbour(grid: Grid, x: number, y: number, rng: Rng): number {
  * is the one that was checked against walls.
  * Given `rng`, a field walker slowed below full speed (desperate) lurches to a random neighbouring
  * tile about DRIFT_PER_TILE of the tiles they walk, following the field otherwise.
+ * A gate tile is a turnstile: it admits one person per GATE_INTERVAL_SEC, whoever is still on it.
+ * Anyone it is not ready for waits at its edge, still counted in the crowd (that is the queue); on
+ * it they walk at full speed, the crowd outside not slowing them.
  */
 export function stepMovement(
   grid: Grid,
@@ -97,6 +173,7 @@ export function stepMovement(
   const crowdAt = (n: number): number => counts[n]!;
   const w = grid.w;
   const { x, y, state, targetKey, speedMul, drift } = people;
+  const ts = turnstilesFor(grid);
 
   for (let i = 0, end = people.end; i < end; i++) {
     const st = state[i]!;
@@ -115,10 +192,12 @@ export function stepMovement(
       ty = Math.floor(py);
       if (!grid.isWalkable(tx, ty)) continue;
     }
+    const clock = ts.clock;
 
     const base = WALK_TILES_PER_SEC * speedFactor(crowd.density(tx, ty)) * speedMul[i]!;
+    const gateSpeed = WALK_TILES_PER_SEC * speedMul[i]!;
     if (!(base > 0)) continue;
-    const maxIter = 4 * Math.ceil((dtReal * base) / TRAVELATOR_COST / MAX_SUBSTEP) + 4;
+    const maxIter = 4 * Math.ceil((dtReal * Math.max(base, gateSpeed)) / TRAVELATOR_COST / MAX_SUBSTEP) + 4;
     let time = dtReal;
     const key = targetKey[i]!;
     const spot = spotTile(key);
@@ -135,21 +214,24 @@ export function stepMovement(
           break;
         }
         if (time <= EPS_TIME) break;
-        const speed = riding(grid, ty * w + tx, dx, dy) ? base / TRAVELATOR_COST : base;
+        const here = ty * w + tx;
+        const speed = subStepSpeed(grid, here, dx, dy, base, gateSpeed);
         const move = Math.min(MAX_SUBSTEP, speed * time, dist);
         const nx = Math.fround(px + (dx / dist) * move);
         const ny = Math.fround(py + (dy / dist) * move);
-        if (canMove(grid, px, py, nx, ny)) {
+        const now = clock + dtReal - time;
+        if (canMoveAs(ts, grid, px, py, nx, ny, now)) {
           px = nx;
           py = ny;
-        } else if (nx !== px && canMove(grid, px, py, nx, py)) {
+        } else if (nx !== px && canMoveAs(ts, grid, px, py, nx, py, now)) {
           px = nx;
-        } else if (ny !== py && canMove(grid, px, py, px, ny)) {
+        } else if (ny !== py && canMoveAs(ts, grid, px, py, px, ny, now)) {
           py = ny;
         }
         time -= move / speed;
         tx = Math.floor(px);
         ty = Math.floor(py);
+        noteEntry(ts, grid, here, ty * w + tx, now);
       }
     } else {
       thunkKey = key;
@@ -179,10 +261,24 @@ export function stepMovement(
         const dx = nx + 0.5 - px;
         const dy = ny + 0.5 - py;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const speed = riding(grid, here, nx - tx, ny - ty) ? base / TRAVELATOR_COST : base;
+        const speed = subStepSpeed(grid, here, nx - tx, ny - ty, base, gateSpeed);
         const move = Math.min(MAX_SUBSTEP, speed * time, dist);
-        px = Math.fround(px + (dx / dist) * move);
-        py = Math.fround(py + (dy / dist) * move);
+        const mx = Math.fround(px + (dx / dist) * move);
+        const my = Math.fround(py + (dy / dist) * move);
+        const to = Math.floor(my) * w + Math.floor(mx);
+        const now = clock + dtReal - time;
+        const wait = gateWait(ts, grid, here, to, now);
+        if (wait > 0) {
+          // The turnstile is not ready: stand at its edge, giving up any lurch toward it, and step
+          // through within this dt if its cadence comes round in time.
+          drift[i] = -1;
+          if (wait >= time) break;
+          time -= wait;
+          continue;
+        }
+        noteEntry(ts, grid, here, to, now);
+        px = mx;
+        py = my;
         time -= move / speed;
         tx = Math.floor(px);
         ty = Math.floor(py);
@@ -192,6 +288,7 @@ export function stepMovement(
     x[i] = px;
     y[i] = py;
   }
+  ts.clock += dtReal;
   return arrived;
 }
 

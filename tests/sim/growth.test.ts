@@ -20,8 +20,10 @@ function feed(w: World, minutes: number, perMin: number, onTimePerMin: number): 
   }
 }
 
+/** Every tile of the slot's half is Platform, but for the gate row at its foot. */
 function slotHasPlatformTiles(w: World, slotId: number): boolean {
-  return platformTiles(slotId).every(([x, y]) => w.grid.tile(x, y) === Tile.Platform);
+  const gateY = w.map.islands[w.map.slots[slotId - 1]!.island - 1]!.gateLine.y;
+  return platformTiles(slotId).every(([x, y]) => y === gateY || w.grid.tile(x, y) === Tile.Platform);
 }
 
 test("meter rate over the window", () => {
@@ -218,13 +220,15 @@ test("opening platform 3 paints island 2; opening platform 4 changes no tiles", 
   const w = createWorld(1);
   const island = w.map.islands[1]!;
   addPlatform(w, 3);
+  const gateY = island.gateLine.y;
   for (const [r, t] of [
     [island.walkway, Tile.Platform],
     [island.leftTrack, Tile.Track],
     [island.rightTrack, Tile.Track],
     [island.foot, Tile.Floor],
   ] as const)
-    for (const [x, y] of tilesOf(r)) expect(w.grid.tile(x, y)).toBe(t);
+    for (const [x, y] of tilesOf(r)) if (r !== island.walkway || y !== gateY) expect(w.grid.tile(x, y)).toBe(t);
+  expect(tilesOf(island.gateLine).map(([x, y]) => w.grid.tile(x, y))).toEqual([Tile.GateClosed, Tile.Gate, Tile.Gate, Tile.GateClosed]);
   const v = w.grid.version;
   w.events.length = 0;
   addPlatform(w, 4);

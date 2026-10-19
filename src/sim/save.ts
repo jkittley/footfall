@@ -5,6 +5,7 @@ import { Ledger, type DayStats, type LedgerLine } from "./economy";
 import type { Facility } from "./facilities";
 import type { GrowthState } from "./growth";
 import { HARBOUR_STREET } from "./maps/harbourStreet";
+import { restoreTurnstiles, saveTurnstiles, type TurnstileSave } from "./movement";
 import type { Sign } from "./needs";
 import { PeopleStore, type PeopleSave } from "./people";
 import { Rng } from "./rng";
@@ -42,6 +43,8 @@ interface SaveFile {
   meter: { minutes: number[]; total: number[]; onTime: number[] };
   growth: GrowthState;
   grid: { version: number; tiles: string; zones: string; zoneOwner: string; dir: string };
+  /** The ticket gates' cadence; absent from saves made before gates (they start fresh). */
+  turnstiles?: TurnstileSave;
   people: PeopleSave;
   /** Services in id order, which is the order the timetable's map hands them out. */
   timetable: { nextId: number; services: Service[]; lastDepart: [number, number][] };
@@ -84,6 +87,7 @@ export function serialise(w: World): string {
       zoneOwner: encodeBytes(g.zoneOwner),
       dir: encodeBytes(g.dir),
     },
+    turnstiles: saveTurnstiles(g),
     people: w.people.toSave(),
     timetable: {
       nextId: w.timetable.nextId,
@@ -137,6 +141,7 @@ export function deserialise(json: string): World {
   restoreBytes(g.zoneOwner, s.grid.zoneOwner, "grid.zoneOwner");
   restoreBytes(g.dir, s.grid.dir, "grid.dir");
   g.version = s.grid.version;
+  if (s.turnstiles) restoreTurnstiles(g, s.turnstiles);
 
   w.people = PeopleStore.fromSave(MAX_PEOPLE, s.people);
 

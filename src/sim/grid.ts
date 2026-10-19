@@ -7,6 +7,10 @@ export enum Tile {
   Platform = 5,
   Entrance = 6,
   Rail = 7,
+  /** An open ticket gate: walkable, admitting one person per GATE_INTERVAL_SEC. */
+  Gate = 8,
+  /** A closed-off slot in a gate line. */
+  GateClosed = 9,
 }
 
 export enum Zone {
@@ -93,7 +97,7 @@ export class Grid {
   isWalkable(x: number, y: number): boolean {
     if (!this.inBounds(x, y)) return false;
     const t = this.tile(x, y);
-    if (t !== Tile.Floor && t !== Tile.Platform && t !== Tile.Entrance) return false;
+    if (t !== Tile.Floor && t !== Tile.Platform && t !== Tile.Entrance && t !== Tile.Gate) return false;
     const z = this.zone(x, y);
     return z === Zone.None || z === Zone.Seating || z === Zone.Travelator;
   }

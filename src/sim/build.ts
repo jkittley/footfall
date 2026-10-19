@@ -7,7 +7,7 @@ import { PState } from "./people";
 import { tileOf } from "./walk";
 import { activePlatformIds, waitingSpots, type World } from "./world";
 
-export type ToolId = "floor" | "retail" | "seating" | "toilet" | "wall" | "rail" | "sign" | "travelator" | "remove";
+export type ToolId = "floor" | "retail" | "seating" | "toilet" | "wall" | "rail" | "gate" | "sign" | "travelator" | "remove";
 
 export interface PlacementPreview {
   tool: ToolId;
@@ -240,10 +240,36 @@ function planSign(w: World, plan: Plan): Plan {
   return plan;
 }
 
+/** Opens a closed-off slot in the gate line of an island whose platforms have opened. */
+function planGate(w: World, plan: Plan): Plan {
+  const g = w.grid;
+  const pv = plan.preview;
+  const r = pv.rect;
+  for (const i of rectTiles(g, r)) (g.tiles[i] === Tile.GateClosed ? pv.tiles : pv.blocked).push(i);
+  pv.cost = PRICES.gate;
+  plan.edits = pv.tiles.map((i) => ({ i, tile: Tile.Gate }));
+  if (r.w !== 1 || r.h !== 1) return refuse(plan, "Pick one tile");
+  if (pv.tiles.length === 0) return refuse(plan, "Pick a closed gate slot");
+  return plan;
+}
+
+/** Open gates per island once `edits` are applied, for every island with a painted gate line. */
+function gatesAfter(w: World, edits: readonly Edit[]): number[] {
+  const g = w.grid;
+  const changed = new Map(edits.filter((e) => e.tile !== undefined).map((e) => [e.i, e.tile!]));
+  const counts: number[] = [];
+  for (const isl of w.map.islands) {
+    const tiles = rectTiles(g, isl.gateLine);
+    if (!tiles.some((i) => g.tiles[i] === Tile.Gate || g.tiles[i] === Tile.GateClosed)) continue;
+    counts.push(tiles.filter((i) => (changed.get(i) ?? g.tiles[i]) === Tile.Gate).length);
+  }
+  return counts;
+}
+
 /**
  * Walls, rails, travelators and signs in the rect and every facility it touches come down, each
  * tile back to plain floor; plain floor in the rect (never a platform, entrance or apron) goes
- * back to ground.
+ * back to ground; an open gate closes again, unless it is its island's last.
  */
 function planRemove(w: World, plan: Plan): Plan {
   const g = w.grid;
@@ -274,7 +300,11 @@ function planRemove(w: World, plan: Plan): Plan {
   }
   for (const i of rectTiles(g, pv.rect)) {
     const t = g.tiles[i] as Tile;
-    if (t === Tile.Wall || t === Tile.Rail) {
+    if (t === Tile.Gate) {
+      plan.edits.push({ i, tile: Tile.GateClosed });
+      refund += PRICES.gate;
+      changed.add(i);
+    } else if (t === Tile.Wall || t === Tile.Rail) {
       plan.edits.push({ i, tile: Tile.Floor });
       refund += t === Tile.Wall ? PRICES.wall : PRICES.rail;
       changed.add(i);
@@ -291,6 +321,7 @@ function planRemove(w: World, plan: Plan): Plan {
   pv.tiles = [...changed].sort((a, b) => a - b);
   pv.cost = -REMOVE_REFUND * refund;
   if (pv.tiles.length === 0) return refuse(plan, "Nothing to remove here");
+  if (gatesAfter(w, plan.edits).some((n) => n === 0)) return refuse(plan, "An island needs at least one gate");
   return plan;
 }
 
@@ -402,6 +433,7 @@ function plan(w: World, tool: ToolId, rect: Rect, opts: BuildOpts): Plan {
   else if (tool === "floor") planFloor(w, p);
   else if (tool === "wall" || tool === "rail" || tool === "travelator") planLine(w, p, tool, opts.dir);
   else if (tool === "sign") planSign(w, p);
+  else if (tool === "gate") planGate(w, p);
   else planRemove(w, p);
   const pv = p.preview;
   if (tool !== "remove") {

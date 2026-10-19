@@ -13,7 +13,7 @@ import {
   type DaySummary,
 } from "./economy";
 import { FacilityKind, arriveAtFacility, stepFacilities, type Facility } from "./facilities";
-import type { Grid, Rect } from "./grid";
+import { Tile, type Grid, type Rect } from "./grid";
 import { ServiceMeter, newGrowthState, stepGrowth, type GrowthState } from "./growth";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
 import { stepMovement } from "./movement";
@@ -130,7 +130,8 @@ export function fieldTargets(w: World, key: string): readonly number[] {
   const arg = key.slice(colon + 1);
   if (kind === "platform") {
     const slot = w.map.slots.find((s) => String(s.id) === arg);
-    return slot ? rectTiles(w.grid, slot.platform) : [];
+    // Platform tiles only: the walkway's gate row is not somewhere to board, wait or alight.
+    return slot ? rectTiles(w.grid, slot.platform).filter((t) => w.grid.tiles[t] === Tile.Platform) : [];
   }
   if (kind === "exit") {
     const e = w.map.entrances.find((en) => en.id === arg);
@@ -169,7 +170,7 @@ export function waitingSpots(w: World, key: string): number[] {
       const edge = slot.side === "left" ? r.x : r.x + r.w - 1;
       const g = w.grid;
       const out: number[] = [];
-      for (let y = r.y; y < r.y + r.h; y++) if (g.isWalkable(edge, y)) out.push(g.idx(edge, y));
+      for (let y = r.y; y < r.y + r.h; y++) if (g.isWalkable(edge, y) && g.tile(edge, y) === Tile.Platform) out.push(g.idx(edge, y));
       if (out.length > 0) return out;
     }
   }

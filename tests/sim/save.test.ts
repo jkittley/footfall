@@ -178,6 +178,8 @@ const CORRUPTIONS: [string, (s: Record<string, any>) => void, string][] = [
   ["a facility with no queue", (s) => delete s.facilities[0].queue, "facilities[0].queue"],
   ["a sign of no kind", (s) => (s.signs[0].kind = "bins"), "signs[0].kind"],
   ["a disruption with no end", (s) => delete s.disruptions[0].endsAt, "disruptions[0].endsAt"],
+  ["a turnstile clock that is not a number", (s) => (s.turnstiles.clock = "soon"), "turnstiles.clock"],
+  ["a turnstile off the grid", (s) => (s.turnstiles.gates = [[1e9, 0]]), "turnstiles"],
 ];
 
 test.each(CORRUPTIONS)("refuses a save with %s at load", (_name, corrupt, field) => {
@@ -190,4 +192,19 @@ test.each(CORRUPTIONS)("refuses a save with %s at load", (_name, corrupt, field)
 
 test("refuses a cut-off save at load", () => {
   expect(() => deserialise(serialise(createWorld(1)).slice(0, 500))).toThrow();
+});
+
+test("gate tiles survive a save at the same version", () => {
+  const w = createWorld(1);
+  const line = w.map.islands[0]!.gateLine;
+  build(w, "gate", { x: line.x, y: line.y, w: 1, h: 1 });
+  expect(SAVE_VERSION).toBe(2);
+  const back = deserialise(serialise(w));
+  expect(Array.from(back.grid.tiles)).toEqual(Array.from(w.grid.tiles));
+  expect(back.grid.tiles[back.grid.idx(line.x, line.y)]).toBe(8);
+  expect(back.grid.tiles[back.grid.idx(line.x + 3, line.y)]).toBe(9);
+  // A save from before gates has no turnstiles: it loads, its gates starting fresh.
+  const old = JSON.parse(serialise(w));
+  delete old.turnstiles;
+  expect(() => deserialise(JSON.stringify(old))).not.toThrow();
 });

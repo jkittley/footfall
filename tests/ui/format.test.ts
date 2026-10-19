@@ -96,6 +96,11 @@ test("other tools use their names", () => {
   }
 });
 
+test("a gate reads Gate · 1 tile · £500", () => {
+  const t = placementTooltip(pv({ tool: "gate", rect: { x: 0, y: 0, w: 1, h: 1 }, tiles: [3], cost: 500 }), 20000);
+  expect(t.text).toBe("Gate · 1 tile · £500 · you have £20,000");
+});
+
 test("a facility counts its whole rect even where blocked", () => {
   const t = placementTooltip(pv({ tool: "toilet", rect: { x: 0, y: 0, w: 2, h: 3 }, tiles: [1, 2], blocked: [3, 4, 5, 6], cost: 2400, valid: false, reason: "Must be on plain floor" }), 9000);
   expect(t).toEqual({ text: "Toilets · 6 tiles · £2,400 · you have £9,000", reason: "Must be on plain floor" });

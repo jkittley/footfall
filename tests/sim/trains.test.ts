@@ -96,7 +96,9 @@ function waitingAt(w: World, platformId: number, [tx, ty]: [number, number]): nu
 
 test("a platform-2 passenger waits on the right half and boards from it", () => {
   const w = createWorld(2);
-  const right = new Set(platformTiles(2).map(([x, y]) => w.grid.idx(x, y)));
+  // Its half of the walkway, less the gate row at the foot.
+  const gateY = w.map.islands[0]!.gateLine.y;
+  const right = new Set(platformTiles(2).filter(([, y]) => y !== gateY).map(([x, y]) => w.grid.idx(x, y)));
   const spots = walkableTargets(w, "platform:2");
   expect(spots.length).toBe(right.size);
   for (const t of spots) expect(right.has(t)).toBe(true);
@@ -134,7 +136,9 @@ test("waiting spots are the walkable outer column beside each platform's track",
   for (const id of [1, 2]) {
     const slot = w.map.slots[id - 1]!;
     const spots = waitingSpots(w, `platform:${id}`).map((t) => w.grid.xy(t));
-    expect(spots).toHaveLength(slot.platform.h);
+    // Every row of its half but the gate row at the foot.
+    expect(spots).toHaveLength(slot.platform.h - 1);
+    for (const [, y] of spots) expect(y).not.toBe(w.map.islands[0]!.gateLine.y);
     // Each spot is one step from the platform's own track.
     for (const [x] of spots) expect(Math.abs(x - slot.track.x)).toBe(1);
   }

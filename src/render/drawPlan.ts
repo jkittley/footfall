@@ -21,7 +21,7 @@ const enum Side {
 function sideOf(g: Grid, x: number, y: number): Side {
   if (!g.inBounds(x, y)) return Side.Out;
   const t = g.tiles[g.idx(x, y)] as Tile;
-  if (t === Tile.Floor || t === Tile.Platform || t === Tile.Rail || t === Tile.Wall) return Side.In;
+  if (t === Tile.Floor || t === Tile.Platform || t === Tile.Rail || t === Tile.Wall || t === Tile.Gate || t === Tile.GateClosed) return Side.In;
   if (t === Tile.Entrance || t === Tile.Track) return Side.Open;
   return Side.Out;
 }
@@ -37,7 +37,7 @@ function rectPx(v: View, r: Rect): [number, number, number, number] {
 
 /**
  * Everything that only changes with the grid: ground and its dot grid, obstacles, floor, track,
- * platform edges, future islands, walls, rails, facility bodies, travelators and entrances.
+ * platform edges, future islands, walls, rails, ticket gates, facility bodies, travelators and entrances.
  */
 export function drawStatic(ctx: CanvasRenderingContext2D, w: World, v: View): void {
   ctx.fillStyle = GROUND;
@@ -53,6 +53,7 @@ export function drawStatic(ctx: CanvasRenderingContext2D, w: World, v: View): vo
   drawEdges(ctx, w.grid, v);
   drawWallTiles(ctx, w.grid, v);
   drawRails(ctx, w.grid, v);
+  drawGates(ctx, w.grid, v);
   drawEntrances(ctx, w, v);
 }
 
@@ -159,7 +160,14 @@ function tileRuns(g: Grid, v: View, pick: (t: Tile, i: number) => boolean): Path
 
 function drawFloor(ctx: CanvasRenderingContext2D, g: Grid, v: View): void {
   ctx.fillStyle = FLOOR;
-  ctx.fill(tileRuns(g, v, (t) => t === Tile.Floor || t === Tile.Platform || t === Tile.Entrance || t === Tile.Rail || t === Tile.Wall));
+  ctx.fill(
+    tileRuns(
+      g,
+      v,
+      (t) =>
+        t === Tile.Floor || t === Tile.Platform || t === Tile.Entrance || t === Tile.Rail || t === Tile.Wall || t === Tile.Gate || t === Tile.GateClosed,
+    ),
+  );
 }
 
 /** Two rails along each track and sleepers across it. */
@@ -538,6 +546,34 @@ function drawRails(ctx: CanvasRenderingContext2D, g: Grid, v: View): void {
   ctx.setLineDash([0, width * 2]);
   ctx.stroke(linkTiles(g, v, Tile.Rail, 0.01));
   ctx.restore();
+}
+
+/**
+ * Ticket gates as on the Style board: a post at each side of every slot in a gate line, with a gap
+ * between them where a gate is open and a solid bar across where the slot is closed off.
+ */
+function drawGates(ctx: CanvasRenderingContext2D, g: Grid, v: View): void {
+  const posts = new Path2D();
+  const bars = new Path2D();
+  const s = v.s;
+  const postW = Math.max(2, 0.18 * s);
+  const postH = 0.62 * s;
+  const barH = Math.max(1.5, 0.14 * s);
+  for (let y = v.y0; y < v.y1; y++) {
+    for (let x = v.x0; x < v.x1; x++) {
+      if (!g.inBounds(x, y)) continue;
+      const t = g.tile(x, y);
+      if (t !== Tile.Gate && t !== Tile.GateClosed) continue;
+      const X0 = sx(v, x);
+      const X1 = sx(v, x + 1);
+      const cy = sy(v, y + 0.5);
+      for (const X of [X0, X1 - postW]) posts.rect(X, cy - postH / 2, postW, postH);
+      if (t === Tile.GateClosed) bars.rect(X0, cy - barH / 2, X1 - X0, barH);
+    }
+  }
+  ctx.fillStyle = WALL;
+  ctx.fill(bars);
+  ctx.fill(posts);
 }
 
 /** A pill outside each entrance: "Entrance A · Harbour Road". */

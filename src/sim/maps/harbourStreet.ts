@@ -7,6 +7,8 @@ export interface IslandDef {
   leftTrack: Rect;
   rightTrack: Rect;
   foot: Rect;
+  /** The walkway's southernmost row: the ticket gates every passenger crosses. */
+  gateLine: Rect;
 }
 
 /** One platform: its island's left or right track, and its half of the walkway (its own waiting area). */
@@ -56,6 +58,7 @@ function makeIsland(id: number): IslandDef {
     rightTrack: { x: x0 + 5, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
     // Spans the gap column too, so neighbouring aprons join into one concourse.
     foot: { x: x0, y: CONCOURSE_TOP, w: 7, h: 2 },
+    gateLine: { x: x0 + 1, y: CONCOURSE_TOP - 1, w: 4, h: 1 },
   };
 }
 
@@ -141,6 +144,9 @@ export function paintIsland(grid: Grid, island: IslandDef): void {
   fill(grid, island.rightTrack, Tile.Track);
   fill(grid, island.walkway, Tile.Platform);
   fill(grid, island.foot, Tile.Floor);
+  const g = island.gateLine;
+  // The two middle gates open; the outer slots are closed off until the player buys gates there.
+  for (let x = g.x; x < g.x + g.w; x++) grid.setTile(x, g.y, x === g.x || x === g.x + g.w - 1 ? Tile.GateClosed : Tile.Gate);
 }
 
 /** Paints the slot's island unless its partner already has; the second of a pair paints nothing. */

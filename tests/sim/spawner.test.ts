@@ -8,7 +8,7 @@ import { computeField } from "../../src/sim/routeField";
 import { onTrainArrived, reachableEntrances, sampleSlack } from "../../src/sim/spawner";
 import { stepTrains } from "../../src/sim/trains";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { entranceTiles, platformTiles, runMinutes, type XY } from "./helpers";
+import { entranceTiles, openAllGates, platformTiles, runMinutes, type XY } from "./helpers";
 
 // Fields computed here from scratch, per grid and layout version, never through the world's cache.
 const fieldMemo = new WeakMap<Grid, Map<string, Float32Array>>();
@@ -112,6 +112,8 @@ test("spawn walks are measured on the layout as built at spawn", () => {
 
 test("an unobstructed station has a very high on-time rate", () => {
   const w = createWorld(5);
+  // All 4 gates: the 2 a station opens with are a deliberate bottleneck (tests/sim/gates.test.ts).
+  openAllGates(w);
   runMinutes(w, 6 * 60);
   let onTime = 0;
   let all = 0;
@@ -269,10 +271,12 @@ test("a passenger who misses the last service heads for an exit, counted once", 
   expect(mine()).toBe(1);
 });
 
-test("across seeds, an unobstructed station stays on time (shared island walkways included)", () => {
+/** On-time rate of each of seeds 1..8 over 6 hours, `setup` run on each new world first. */
+function seedRates(setup: (w: World) => void = () => {}): number[] {
   const rates: number[] = [];
   for (let seed = 1; seed <= 8; seed++) {
     const w = createWorld(seed);
+    setup(w);
     runMinutes(w, 6 * 60);
     let onTime = 0;
     let all = 0;
@@ -283,6 +287,19 @@ test("across seeds, an unobstructed station stays on time (shared island walkway
     }
     rates.push(onTime / all);
   }
+  return rates;
+}
+
+const mean = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+test("across seeds, the starting station (2 gates per island) stays mostly on time", () => {
+  const rates = seedRates();
+  for (const r of rates) expect(r).toBeGreaterThanOrEqual(0.9);
+  expect(mean(rates)).toBeGreaterThanOrEqual(0.93);
+});
+
+test("across seeds, an unobstructed station stays on time (shared island walkways included, all 4 gates open)", () => {
+  const rates = seedRates(openAllGates);
   for (const r of rates) expect(r).toBeGreaterThanOrEqual(0.965);
-  expect(rates.reduce((a, b) => a + b, 0) / rates.length).toBeGreaterThanOrEqual(0.98);
+  expect(mean(rates)).toBeGreaterThanOrEqual(0.98);
 });
