@@ -1,6 +1,5 @@
 import {
   EMPTY_AFTER_EVICT_MIN,
-  ERRAND_COOLDOWN_MIN,
   FOOTFALL_RADIUS,
   LEISURE_SPEND_MUL,
   MAX_QUEUE_TILES,
@@ -16,8 +15,8 @@ import { NEED_COUNT, Need, PState, type PeopleStore } from "./people";
 import { FacilityKind, Tenant } from "./facilityKinds";
 import { refreshSigns } from "./needs";
 import type { Rng } from "./rng";
-import { walkMinutes } from "./routeField";
-import { fieldTargets, type World } from "./world";
+import { spareMinutes, tileOf } from "./walk";
+import type { World } from "./world";
 
 export { FacilityKind, Tenant };
 
@@ -215,10 +214,7 @@ function prune(p: PeopleStore, f: Facility, servingState: PState): void {
 function resume(p: PeopleStore, pid: number): void {
   p.state[pid] = PState.Walking;
   p.targetKey[pid] = p.goalKey[pid]!;
-  p.errand[pid] = -1;
-  p.errandFacility[pid] = -1;
-  p.speedMul[pid] = 1;
-  p.errandCooldown[pid] = ERRAND_COOLDOWN_MIN;
+  p.endErrand(pid);
 }
 
 /** Joins a retail unit's or toilet's queue; false if it is closed, a seat block, or its queue is full. */
@@ -247,24 +243,6 @@ function sit(w: World, f: Facility, pid: number): boolean {
 /** A person has reached facility `f`: they join its queue, or sit if it is seating. */
 export function arriveAtFacility(w: World, f: Facility, pid: number): boolean {
   return f.kind === FacilityKind.Seating ? sit(w, f, pid) : tryJoin(w, f, pid);
-}
-
-function tileOf(w: World, pid: number): number {
-  return w.grid.idx(Math.floor(w.people.x[pid]!), Math.floor(w.people.y[pid]!));
-}
-
-/**
- * Minutes left over after walking from here to their goal. Someone who cannot reach their goal
- * from here loses nothing by staying, so an unreachable goal counts as no walk.
- */
-export function spareMinutes(w: World, pid: number): number {
-  const p = w.people;
-  const goal = p.goalKey[pid]!;
-  const walk = walkMinutes(
-    w.fields.get(goal, () => fieldTargets(w, goal)),
-    tileOf(w, pid),
-  );
-  return p.deadline[pid]! - w.minute - (Number.isFinite(walk) ? walk : 0);
 }
 
 function countFootfall(w: World, f: Facility): void {

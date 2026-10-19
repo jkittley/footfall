@@ -2,15 +2,15 @@ import {
   ABANDON_MARGIN_MIN,
   DESPERATE_AFTER_MIN,
   DESPERATE_SPEED_MUL,
-  ERRAND_COOLDOWN_MIN,
   SEARCH_INTERVAL_MIN,
   SIGHT_RADIUS,
   SIGN_RADIUS,
 } from "./constants";
-import { spareMinutes, type Facility } from "./facilities";
+import type { Facility } from "./facilities";
 import { FacilityKind, Tenant } from "./facilityKinds";
 import { NEED_COUNT, Need, PState } from "./people";
-import { fieldTargets, type World } from "./world";
+import { fieldFor, spareMinutes, tileOf } from "./walk";
+import type { World } from "./world";
 
 export const NEED_RATE_PER_MIN: Record<Need, number> = {
   [Need.Hunger]: 1 / 240,
@@ -60,8 +60,7 @@ function signShows(kind: Sign["kind"], f: Facility): boolean {
 }
 
 function fieldOf(w: World, f: Facility): Float32Array {
-  const key = facilityKey(f);
-  return w.fields.get(key, () => fieldTargets(w, key));
+  return fieldFor(w, facilityKey(f));
 }
 
 /** Points every sign at the nearest facility it shows, by walk from the sign's tile. */
@@ -99,20 +98,16 @@ function knownFacility(w: World, pid: number, need: Need): Facility | undefined 
   return undefined;
 }
 
-function tileOf(w: World, pid: number): number {
-  return w.grid.idx(Math.floor(w.people.x[pid]!), Math.floor(w.people.y[pid]!));
-}
-
 /** Learns of a facility for `need` in sight, else from a sign in reach; the facility, if any. */
-function lookAround(w: World, pid: number, need: Need, candidates: readonly Facility[]): Facility | undefined {
+function lookAround(w: World, pid: number, need: Need, candidates: readonly Candidate[]): Facility | undefined {
   const tile = tileOf(w, pid);
   let found: Facility | undefined;
   let bestDist = SIGHT_RADIUS;
-  for (const f of candidates) {
-    const d = fieldOf(w, f)[tile]!;
+  for (const c of candidates) {
+    const d = c.field[tile]!;
     if (d <= bestDist) {
       bestDist = d;
-      found = f;
+      found = c.f;
     }
   }
   if (!found) {
@@ -144,11 +139,7 @@ function goTo(w: World, pid: number, f: Facility): void {
 /** Errand over with the need unmet: back to the goal (or still waiting) at full speed. */
 export function dropErrand(w: World, pid: number): void {
   const p = w.people;
-  p.errand[pid] = -1;
-  p.errandFacility[pid] = -1;
-  p.speedMul[pid] = 1;
-  p.drift[pid] = -1;
-  p.errandCooldown[pid] = ERRAND_COOLDOWN_MIN;
+  p.endErrand(pid);
   if (p.state[pid] === PState.Walking) p.targetKey[pid] = p.goalKey[pid]!;
 }
 
@@ -170,10 +161,23 @@ function hasTime(w: World, pid: number): boolean {
   return spareMinutes(w, pid) >= ABANDON_MARGIN_MIN;
 }
 
-/** Open facilities meeting each need, built once per search. */
-function candidatesByNeed(w: World): Facility[][] {
-  const out: Facility[][] = NEEDS.map(() => []);
-  for (const f of w.facilities.values()) for (const n of NEEDS) if (meetsNeed(f, n)) out[n]!.push(f);
+/** True while the train this person is booked on stands at its platform. */
+function trainIn(w: World, pid: number): boolean {
+  const id = w.people.serviceId[pid]!;
+  if (id < 0) return false;
+  const s = w.timetable.services.get(id);
+  return s !== undefined && !s.cancelled && s.arriveAt <= w.minute;
+}
+
+type Candidate = { f: Facility; field: Float32Array };
+
+/** Open facilities meeting each need with their fields, resolved once per search. */
+function candidatesByNeed(w: World): Candidate[][] {
+  const out: Candidate[][] = NEEDS.map(() => []);
+  for (const f of w.facilities.values()) {
+    let field: Float32Array | null = null;
+    for (const n of NEEDS) if (meetsNeed(f, n)) out[n]!.push({ f, field: (field ??= fieldOf(w, f)) });
+  }
   return out;
 }
 
@@ -182,7 +186,7 @@ const rise = new Float64Array(NEED_COUNT);
 
 /**
  * Advances needs by `dtMin` game minutes. Walking or waiting people take up their highest need at
- * or over 1 as an errand when they have time for it, look round for a facility for it every
+ * or over 1 as an errand when they have time for it and their train is not in, look round for a facility for it every
  * SEARCH_INTERVAL_MIN (in sight, or named by a nearby sign), and walk to one they know; anyone
  * whose goal is getting close drops the errand, need unmet. Someone who has gone DESPERATE_AFTER_MIN
  * without finding a toilet slows down and wanders.
@@ -191,7 +195,7 @@ export function stepNeeds(w: World, dtMin: number): void {
   w.searchClock += dtMin;
   const search = w.searchClock >= SEARCH_INTERVAL_MIN;
   if (search) w.searchClock %= SEARCH_INTERVAL_MIN;
-  let candidates: Facility[][] | null = null;
+  let candidates: Candidate[][] | null = null;
   const p = w.people;
   const { needs, state, leisure } = p;
   // Locals for the hot loop: imported bindings can cost a getter call each in some builds.
@@ -219,7 +223,7 @@ export function stepNeeds(w: World, dtMin: number): void {
       }
       const n = highestNeed(w, i);
       if (n < 0) continue;
-      if (!hasTime(w, i)) {
+      if (!hasTime(w, i) || trainIn(w, i)) {
         p.errandCooldown[i] = SEARCH_INTERVAL_MIN;
         continue;
       }

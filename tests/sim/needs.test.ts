@@ -1,9 +1,9 @@
 import { expect, test } from "vitest";
 import { DESPERATE_AFTER_MIN, SIM_DT } from "../../src/sim/constants";
 import { FacilityKind, TENANTS, Tenant, createFacility, tryJoin, type Facility } from "../../src/sim/facilities";
-import { Tile, type Rect } from "../../src/sim/grid";
+import { Grid, Tile, type Rect } from "../../src/sim/grid";
 import { stepMovement } from "../../src/sim/movement";
-import { addSign, refreshSigns } from "../../src/sim/needs";
+import { addSign, refreshSigns, stepNeeds } from "../../src/sim/needs";
 import { NEED_COUNT, Need, PState, PeopleStore } from "../../src/sim/people";
 import { Rng } from "../../src/sim/rng";
 import { CrowdGrid } from "../../src/sim/crowd";
@@ -260,4 +260,86 @@ test("errands never make a fair-deadline person miss on an empty map", () => {
   expect(w.ledger.today.rent).toBeGreaterThan(0);
   expect(toiletUsed).toBe(true);
   expect(onTime / all).toBeGreaterThanOrEqual(0.95);
+});
+
+/** A departing passenger waiting at the foot of platform 1, booked on its first service after `after`. */
+function waitingPassenger(w: World, after: number): { pid: number; serviceId: number } {
+  const s = w.timetable.upcoming(1, w.minute).find((sv) => sv.arriveAt > after)!;
+  const p = w.people;
+  const pid = person(w, 9, 52, 0, PState.Waiting);
+  p.goalKey[pid] = "platform:1";
+  p.serviceId[pid] = s.id;
+  p.deadline[pid] = s.departAt;
+  return { pid, serviceId: s.id };
+}
+
+test("a waiting passenger goes for food, comes back and boards on time", () => {
+  const w = createWorld(2);
+  const f = letTo(createFacility(w, FacilityKind.Retail, { x: 14, y: 57, w: 2, h: 2 }), Tenant.FoodDrink);
+  const { pid } = waitingPassenger(w, w.minute + 40);
+  const field = w.fields.get(`facility:${f.id}`, () => fieldTargets(w, `facility:${f.id}`));
+  expect(field[tileOf(w, pid)]!).toBeLessThanOrEqual(8);
+  setNeed(w, pid, Need.Hunger, 1);
+  let left = false;
+  let ate = false;
+  let outcome: { onTime: boolean } | undefined;
+  for (let n = 0; n < 200000 && !outcome; n++) {
+    step(w, SIM_DT);
+    if (w.people.targetKey[pid] === `facility:${f.id}`) left = true;
+    if (f.serving.some((s) => s.pid === pid)) ate = true;
+    for (const e of w.events) if (e.kind === "outcome" && e.personId === pid) outcome = e;
+  }
+  expect(left).toBe(true);
+  expect(ate).toBe(true);
+  expect(outcome).toEqual(expect.objectContaining({ onTime: true }));
+});
+
+test("nobody starts an errand while their train is in", () => {
+  const w = createWorld(2);
+  letTo(createFacility(w, FacilityKind.Retail, { x: 14, y: 57, w: 2, h: 2 }), Tenant.FoodDrink);
+  const s = w.timetable.upcoming(1, w.minute)[0]!;
+  // Moments after it pulls in, with time still to spare on paper before it leaves.
+  w.minute = s.arriveAt + 0.01;
+  w.trainsUpTo = w.minute;
+  s.departAt = s.arriveAt + 30;
+  const p = w.people;
+  const pid = person(w, 9, 52, 0, PState.Waiting);
+  p.goalKey[pid] = "platform:1";
+  p.serviceId[pid] = s.id;
+  p.deadline[pid] = s.departAt;
+  setNeed(w, pid, Need.Hunger, 1);
+  stepNeeds(w, 0.01);
+  expect(p.errand[pid]).toBe(-1);
+  expect(p.state[pid]).toBe(PState.Waiting);
+});
+
+test("a desperate walker in a walled corridor only ever stands on walkable tiles", () => {
+  const grid = new Grid(40, 5);
+  for (let x = 0; x < 40; x++) {
+    grid.setTile(x, 0, Tile.Wall);
+    grid.setTile(x, 4, Tile.Wall);
+    for (let y = 1; y < 4; y++) grid.setTile(x, y, Tile.Floor);
+  }
+  for (let y = 1; y < 4; y++) grid.setTile(20, y, y === 2 ? Tile.Floor : Tile.Wall);
+  const fields = new FieldCache(grid);
+  const people = new PeopleStore(4);
+  const crowd = new CrowdGrid(grid.w, grid.h);
+  const targets = [grid.idx(39, 2)];
+  const i = people.alloc();
+  people.x[i] = 0.5;
+  people.y[i] = 2.5;
+  people.state[i] = PState.Walking;
+  people.targetKey[i] = "end";
+  people.speedMul[i] = 0.7;
+  const rng = new Rng(11);
+  let arrived = false;
+  let drifted = 0;
+  for (let n = 0; n < 40000 && !arrived; n++) {
+    crowd.rebuild(people, grid);
+    arrived = stepMovement(grid, fields, () => targets, people, crowd, SIM_DT, rng).includes(i);
+    expect(grid.isWalkable(Math.floor(people.x[i]!), Math.floor(people.y[i]!))).toBe(true);
+    if (people.drift[i]! >= 0) drifted++;
+  }
+  expect(arrived).toBe(true);
+  expect(drifted).toBeGreaterThan(0);
 });

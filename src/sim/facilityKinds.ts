@@ -1,4 +1,4 @@
-// A leaf module, so needs.ts can build its tables at load time despite the facilities/world/needs import cycle.
+// A leaf module: needs.ts reads these at load time and must not import facilities.ts, which imports it.
 
 export enum FacilityKind {
   Retail = 0,

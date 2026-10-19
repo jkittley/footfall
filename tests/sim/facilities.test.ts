@@ -166,7 +166,7 @@ test("a served customer pays rent and loses their hunger", () => {
   expect(w.people.needs[pid * NEED_COUNT + Need.Hunger]).toBe(0);
   expect(w.people.needs[pid * NEED_COUNT + Need.Thirst]).toBe(0);
   // Untouched by the meal; it has only risen while they queued.
-  expect(w.people.needs[pid * NEED_COUNT + Need.Tired]).toBeGreaterThanOrEqual(0.5);
+  expect(w.people.needs[pid * NEED_COUNT + Need.Tired]).toBeCloseTo(0.5, 1);
   expect(w.people.targetKey[pid]).toBe("exit:A");
   expect(w.people.errand[pid]).toBe(-1);
   expect(w.people.errandFacility[pid]).toBe(-1);

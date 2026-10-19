@@ -1,3 +1,5 @@
+import { ERRAND_COOLDOWN_MIN } from "./constants";
+
 export enum Mode {
   Train = 0,
   Subway = 1,
@@ -146,6 +148,15 @@ export class PeopleStore {
   forEachAlive(fn: (i: number) => void): void {
     const top = this.top;
     for (let i = 0; i < top; i++) if (this.alive[i]) fn(i);
+  }
+
+  /** Errand over, met or not: full speed again, and a pause before the next one. */
+  endErrand(i: number): void {
+    this.errand[i] = -1;
+    this.errandFacility[i] = -1;
+    this.speedMul[i] = 1;
+    this.drift[i] = -1;
+    this.errandCooldown[i] = ERRAND_COOLDOWN_MIN;
   }
 
   private reset(i: number): void {
