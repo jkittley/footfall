@@ -106,6 +106,13 @@ export function leisureShare(m: number): number {
 
 export type Holiday = { name: "Summer holidays" | "Christmas"; startsAt: number };
 
+/** The holiday running at minute m, if any. */
+export function currentHoliday(m: number): Holiday["name"] | null {
+  if (isSummer(m)) return "Summer holidays";
+  if (isChristmas(m)) return "Christmas";
+  return null;
+}
+
 /** The next holiday start at or after minute m. */
 export function nextHoliday(m: number): Holiday | null {
   const first = Math.max(0, weekIndex(m));

@@ -174,3 +174,13 @@ test("each sign adds its daily upkeep", () => {
   w.signs.push({ id: 900, tile: 0, kind: "toilets", pointsTo: -1 }, { id: 901, tile: 1, kind: "shops", pointsTo: -1 });
   expect(dailyUpkeep(w)).toBe(base + 2 * UPKEEP_PER_DAY.sign);
 });
+
+test("todayTotals sums income and cost lines without closing the day", () => {
+  const l = new Ledger(1000);
+  l.credit("rent", 50);
+  l.credit("removals", 10);
+  l.debit("build", 300);
+  l.debit("refunds", 12);
+  expect(l.todayTotals()).toEqual({ income: 60, costs: 312 });
+  expect(l.today.build).toBe(300);
+});

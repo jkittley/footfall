@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import {
-  START_MINUTE, dayOfWeek, demand, formatClock, leisureShare, minuteOfDay, month, nextHoliday, periodLabel,
+  START_MINUTE, currentHoliday, dayOfWeek, demand, formatClock, leisureShare, minuteOfDay, month, nextHoliday, periodLabel,
 } from "../../src/sim/clock";
 
 const WEEK = 7 * 1440;
@@ -50,4 +50,13 @@ test("nextHoliday finds the next start", () => {
   expect(nextHoliday(4 * WEEK)).toEqual({ name: "Summer holidays", startsAt: 4 * WEEK });
   expect(nextHoliday(4 * WEEK + 1)).toEqual({ name: "Christmas", startsAt: 9 * WEEK + 3 * 1440 });
   expect(nextHoliday(9 * WEEK + 3 * 1440 + 1)).toEqual({ name: "Summer holidays", startsAt: 16 * WEEK });
+});
+
+test("currentHoliday names the holiday running now", () => {
+  expect(currentHoliday(0)).toBeNull();
+  expect(currentHoliday(4 * WEEK)).toBe("Summer holidays");
+  expect(currentHoliday(6 * WEEK - 1)).toBe("Summer holidays");
+  expect(currentHoliday(6 * WEEK)).toBeNull();
+  expect(currentHoliday(9 * WEEK + 3 * 1440)).toBe("Christmas");
+  expect(currentHoliday(9 * WEEK + 2 * 1440)).toBeNull();
 });

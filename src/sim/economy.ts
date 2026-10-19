@@ -81,13 +81,19 @@ export class Ledger {
     this.today[line] += amount;
   }
 
-  closeDay(day: number, stats: DayStats): DaySummary {
+  /** Today's takings and spending so far, each a positive sum of its lines. */
+  todayTotals(): { income: number; costs: number } {
     let income = 0;
     let costs = 0;
     for (const line of LEDGER_LINES) {
       if (INCOME_LINES.has(line)) income += this.today[line];
       else costs += this.today[line];
     }
+    return { income, costs };
+  }
+
+  closeDay(day: number, stats: DayStats): DaySummary {
+    const { income, costs } = this.todayTotals();
     this.today = emptyLines();
     return {
       day,

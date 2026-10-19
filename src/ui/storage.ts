@@ -27,3 +27,15 @@ export function clearSave(): void {
     // Nothing stored to clear.
   }
 }
+
+const CORRUPT_KEY = "footfall.save.corrupt";
+
+/** Moves an unreadable save to its own key, so it is kept for a look but no longer loaded. */
+export function stashCorruptSave(json: string): void {
+  try {
+    localStorage.setItem(CORRUPT_KEY, json);
+  } catch {
+    // Keeping a copy is best effort; the main key is still cleared below.
+  }
+  clearSave();
+}

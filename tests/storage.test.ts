@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { clearSave, loadSave, writeSave } from "../src/ui/storage";
+import { clearSave, loadSave, stashCorruptSave, writeSave } from "../src/ui/storage";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -28,4 +28,16 @@ test("a browser that refuses storage loses the save, not the game", () => {
   expect(loadSave()).toBeNull();
   expect(writeSave("{}")).toBe(false);
   expect(() => clearSave()).not.toThrow();
+});
+
+test("a corrupt save is moved aside under its own key", () => {
+  const store = new Map<string, string>([["footfall.save.v1", "{bad"]]);
+  vi.stubGlobal("localStorage", {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  });
+  stashCorruptSave("{bad");
+  expect(store.get("footfall.save.corrupt")).toBe("{bad");
+  expect(store.has("footfall.save.v1")).toBe(false);
 });
