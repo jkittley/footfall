@@ -157,3 +157,10 @@ test("an excluded on-time outcome still earns the fare", () => {
   expect(w.ledger.today.fares).toBe(FARE_BONUS);
   expect(w.stats).toEqual({ movedToday: 1, onTimeToday: 0, missedToday: 0 });
 });
+
+test("each sign adds its daily upkeep", () => {
+  const w = createWorld(1);
+  const base = dailyUpkeep(w);
+  w.signs.push({ id: 900, tile: 0, kind: "toilets", pointsTo: -1 }, { id: 901, tile: 1, kind: "shops", pointsTo: -1 });
+  expect(dailyUpkeep(w)).toBe(base + 2 * UPKEEP_PER_DAY.sign);
+});

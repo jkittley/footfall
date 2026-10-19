@@ -1,7 +1,8 @@
 import { Dir, Grid, Zone } from "./grid";
-import { TRAVELATOR_COST, WALK_TILES_PER_SEC } from "./constants";
+import { DRIFT_PER_TILE, TRAVELATOR_COST, WALK_TILES_PER_SEC } from "./constants";
 import { CrowdGrid, speedFactor } from "./crowd";
 import { PState, type PeopleStore } from "./people";
+import type { Rng } from "./rng";
 import { nextStep, type FieldCache } from "./routeField";
 
 /** No sub-step moves further than this (tiles), so a large dt cannot jump a wall. */
@@ -53,6 +54,19 @@ function canMove(grid: Grid, ax: number, ay: number, bx: number, by: number): bo
   return true;
 }
 
+/** A random walkable neighbour of (x, y), 8-way without cutting corners; -1 if none. */
+function randomNeighbour(grid: Grid, x: number, y: number, rng: Rng): number {
+  let count = 0;
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++) if ((dx !== 0 || dy !== 0) && canMove(grid, x, y, x + dx, y + dy)) count++;
+  if (count === 0) return -1;
+  let k = Math.floor(rng.next() * count);
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++)
+      if ((dx !== 0 || dy !== 0) && canMove(grid, x, y, x + dx, y + dy) && k-- === 0) return (y + dy) * grid.w + x + dx;
+  return -1;
+}
+
 /**
  * Moves every Walking person, and every Waiting or InQueue person with a targetKey, for `dtReal`
  * real seconds and returns the indices that are at their targetKey (their state is unchanged; the
@@ -64,6 +78,8 @@ function canMove(grid: Grid, ax: number, ay: number, bx: number, by: number): bo
  * Speed comes from `crowd` as passed in (the caller rebuilds it); the walker counts in its own tile.
  * Positions are written back through Math.fround after every sub-step, so the stored Float32 value
  * is the one that was checked against walls.
+ * Given `rng`, a field walker slowed below full speed (desperate) lurches to a random neighbouring
+ * tile about DRIFT_PER_TILE of the tiles they walk, following the field otherwise.
  */
 export function stepMovement(
   grid: Grid,
@@ -72,6 +88,7 @@ export function stepMovement(
   people: PeopleStore,
   crowd: CrowdGrid,
   dtReal: number,
+  rng?: Rng,
 ): number[] {
   const arrived: number[] = [];
   if (dtReal <= 0) return arrived;
@@ -79,7 +96,7 @@ export function stepMovement(
   const counts = crowd.counts;
   const crowdAt = (n: number): number => counts[n]!;
   const w = grid.w;
-  const { x, y, state, targetKey, speedMul } = people;
+  const { x, y, state, targetKey, speedMul, drift } = people;
 
   for (let i = 0, end = people.end; i < end; i++) {
     const st = state[i]!;
@@ -137,6 +154,7 @@ export function stepMovement(
     } else {
       thunkKey = key;
       const field = fields.get(key, targetsThunk);
+      const drifts = rng !== undefined && speedMul[i]! < 1;
       for (let iter = 0; iter < maxIter; iter++) {
         const here = ty * w + tx;
         if (field[here] === 0) {
@@ -144,7 +162,15 @@ export function stepMovement(
           break;
         }
         if (time <= EPS_TIME) break;
-        const n = nextStep(grid, field, tx, ty, crowdAt);
+        let n = -1;
+        if (drifts) {
+          const d = drift[i]!;
+          const ddx = (d % w) - tx;
+          const ddy = Math.floor(d / w) - ty;
+          if (d >= 0 && d !== here && Math.abs(ddx) <= 1 && Math.abs(ddy) <= 1) n = d;
+          else drift[i] = -1;
+        }
+        if (n < 0) n = nextStep(grid, field, tx, ty, crowdAt);
         if (n < 0) break;
         const nx = n % w;
         const ny = (n - nx) / w;
@@ -160,6 +186,7 @@ export function stepMovement(
         time -= move / speed;
         tx = Math.floor(px);
         ty = Math.floor(py);
+        if (drifts && drift[i]! < 0 && rng.next() < move * DRIFT_PER_TILE) drift[i] = randomNeighbour(grid, tx, ty, rng);
       }
     }
     x[i] = px;

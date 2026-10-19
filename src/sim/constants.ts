@@ -36,3 +36,19 @@ export const QUEUE_GIVE_UP_MIN = 20;
 export const QUEUE_LEAVE_MARGIN = 5;
 /** Longest line of floor tiles a queue may stand on. */
 export const MAX_QUEUE_TILES = 12;
+/** Game minutes between looks round for a facility that meets an errand. */
+export const SEARCH_INTERVAL_MIN = 1;
+/** A facility this many tiles' walk away (or nearer) is seen. */
+export const SIGHT_RADIUS = 8;
+/** A sign this many tiles away (straight line) or nearer is read. */
+export const SIGN_RADIUS = 10;
+/** A person who has not found a toilet in this many game minutes is desperate. */
+export const DESPERATE_AFTER_MIN = 20;
+/** A desperate person's speed multiplier. */
+export const DESPERATE_SPEED_MUL = 0.7;
+/** Chance per tile walked that a desperate person lurches to a random neighbouring tile. */
+export const DRIFT_PER_TILE = 0.25;
+/** An errand is dropped when fewer than this many spare minutes remain over the walk to the goal. */
+export const ABANDON_MARGIN_MIN = 5;
+/** Game minutes after an errand ends before a person takes up another. */
+export const ERRAND_COOLDOWN_MIN = 5;

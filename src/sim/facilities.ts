@@ -1,5 +1,6 @@
 import {
   EMPTY_AFTER_EVICT_MIN,
+  ERRAND_COOLDOWN_MIN,
   FOOTFALL_RADIUS,
   LEISURE_SPEND_MUL,
   MAX_QUEUE_TILES,
@@ -12,23 +13,13 @@ import {
 import { PRICES, RENT_SHARE } from "./economy";
 import { Tile, Zone, type Grid, type Rect } from "./grid";
 import { NEED_COUNT, Need, PState, type PeopleStore } from "./people";
+import { FacilityKind, Tenant } from "./facilityKinds";
+import { refreshSigns } from "./needs";
 import type { Rng } from "./rng";
 import { walkMinutes } from "./routeField";
 import { fieldTargets, type World } from "./world";
 
-export enum FacilityKind {
-  Retail = 0,
-  Toilet = 1,
-  Seating = 2,
-}
-
-export enum Tenant {
-  None = 0,
-  FoodDrink = 1,
-  Newsagent = 2,
-  PhoneCharging = 3,
-  Electronics = 4,
-}
+export { FacilityKind, Tenant };
 
 type LetTenant = Exclude<Tenant, Tenant.None>;
 
@@ -189,6 +180,7 @@ export function createFacility(w: World, kind: FacilityKind, rect: Rect): Facili
     builtPrice: area * PRICE_OF[kind],
   };
   w.facilities.set(id, f);
+  refreshSigns(w);
   return f;
 }
 
@@ -219,12 +211,14 @@ function prune(p: PeopleStore, f: Facility, servingState: PState): void {
   f.serving.length = n;
 }
 
-/** Back on their way to their goal, errand over. */
+/** Back on their way to their goal at full speed, errand over. */
 function resume(p: PeopleStore, pid: number): void {
   p.state[pid] = PState.Walking;
   p.targetKey[pid] = p.goalKey[pid]!;
   p.errand[pid] = -1;
   p.errandFacility[pid] = -1;
+  p.speedMul[pid] = 1;
+  p.errandCooldown[pid] = ERRAND_COOLDOWN_MIN;
 }
 
 /** Joins a retail unit's or toilet's queue; false if it is closed, a seat block, or its queue is full. */
@@ -263,7 +257,7 @@ function tileOf(w: World, pid: number): number {
  * Minutes left over after walking from here to their goal. Someone who cannot reach their goal
  * from here loses nothing by staying, so an unreachable goal counts as no walk.
  */
-function spareMinutes(w: World, pid: number): number {
+export function spareMinutes(w: World, pid: number): number {
   const p = w.people;
   const goal = p.goalKey[pid]!;
   const walk = walkMinutes(
@@ -298,6 +292,7 @@ function moveIn(w: World, f: Facility): void {
   f.tenantAt = -1;
   f.footfall = { commuter: 0, leisure: 0 };
   f.footfallSeen.clear();
+  refreshSigns(w);
 }
 
 function finishService(w: World, f: Facility, pid: number): void {
@@ -400,5 +395,6 @@ export function evictTenant(w: World, id: number): boolean {
   for (const s of f.serving) resume(p, s.pid);
   f.queue.length = 0;
   f.serving.length = 0;
+  refreshSigns(w);
   return true;
 }

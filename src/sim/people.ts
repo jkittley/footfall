@@ -70,6 +70,12 @@ export class PeopleStore {
   errandFacility: Int32Array;
   /** cap * NEED_COUNT, facility id or -1. */
   known: Int32Array;
+  /** Game minutes spent on the current errand with no facility known for it. */
+  seekMin: Float32Array;
+  /** Game minutes left before a new errand may start. */
+  errandCooldown: Float32Array;
+  /** Tile a desperate walker is lurching to, or -1. */
+  drift: Int32Array;
   timer: Float32Array;
   counted: Uint8Array;
 
@@ -99,6 +105,9 @@ export class PeopleStore {
     this.errand = new Int8Array(cap);
     this.errandFacility = new Int32Array(cap);
     this.known = new Int32Array(cap * NEED_COUNT);
+    this.seekMin = new Float32Array(cap);
+    this.errandCooldown = new Float32Array(cap);
+    this.drift = new Int32Array(cap);
     this.timer = new Float32Array(cap);
     this.counted = new Uint8Array(cap);
     this.alive = new Uint8Array(cap);
@@ -158,6 +167,9 @@ export class PeopleStore {
     this.errand[i] = -1;
     this.errandFacility[i] = -1;
     this.known.fill(-1, i * NEED_COUNT, (i + 1) * NEED_COUNT);
+    this.seekMin[i] = 0;
+    this.errandCooldown[i] = 0;
+    this.drift[i] = -1;
     this.timer[i] = 0;
     this.counted[i] = 0;
   }

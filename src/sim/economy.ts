@@ -137,6 +137,5 @@ export function dailyUpkeep(w: World): number {
         break;
     }
   }
-  // Task 11 adds signs here: total += w.signs.length * UPKEEP_PER_DAY.sign.
-  return total;
+  return total + w.signs.length * UPKEEP_PER_DAY.sign;
 }

@@ -11,10 +11,11 @@ import {
   type DayStats,
   type DaySummary,
 } from "./economy";
-import { FacilityKind, stepFacilities, type Facility } from "./facilities";
+import { FacilityKind, arriveAtFacility, stepFacilities, type Facility } from "./facilities";
 import type { Grid, Rect } from "./grid";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
 import { stepMovement } from "./movement";
+import { dropErrand, meetsNeed, stepNeeds, type Sign } from "./needs";
 import { Journey, PState, PeopleStore } from "./people";
 import { Rng } from "./rng";
 import { FieldCache } from "./routeField";
@@ -53,6 +54,9 @@ export interface World {
   day: number;
   /** Keyed by id, in creation order. */
   facilities: Map<number, Facility>;
+  signs: Sign[];
+  /** Game minutes since people last looked round for facilities (see stepNeeds). */
+  searchClock: number;
   nextId: number;
 }
 
@@ -77,6 +81,8 @@ export function createWorld(seed: number): World {
     ledger: new Ledger(STARTING_CASH),
     day: dayIndex(START_MINUTE),
     facilities: new Map(),
+    signs: [],
+    searchClock: 0,
     nextId: 1,
   };
   w.timetable.ensureHorizon(w.minute, activePlatformIds(w), w.rng);
@@ -155,7 +161,8 @@ export function recordOutcome(w: World, personId: number, onTime: boolean, exclu
  * Reacts to walkers at their target, changing each one's state or target (or freeing them) so the
  * next step does not report them again: at an exit an arriving passenger leaves, on time if within
  * their deadline; on their platform a passenger waits, strolling to a random spot along it; a
- * queuer at their queue spot stands there.
+ * queuer at their queue spot stands there; someone on an errand reaches its facility and queues or
+ * sits, or drops the errand when it is full or no longer meets their need.
  */
 function handleArrivals(w: World, arrived: readonly number[]): void {
   const p = w.people;
@@ -166,6 +173,10 @@ function handleArrivals(w: World, arrived: readonly number[]): void {
     } else if (key.startsWith("exit:")) {
       recordOutcome(w, i, w.minute <= p.deadline[i]!, false);
       p.free(i);
+    } else if (key.startsWith("facility:") || key.startsWith("seat:")) {
+      const f = w.facilities.get(Number(key.slice(key.indexOf(":") + 1)));
+      const errand = p.errand[i]!;
+      if (!f || errand < 0 || !meetsNeed(f, errand) || !arriveAtFacility(w, f, i)) dropErrand(w, i);
     } else if (key.startsWith("platform:")) {
       const tiles = walkableTargets(w, key);
       p.state[i] = PState.Waiting;
@@ -184,8 +195,9 @@ export function step(w: World, dtReal: number): void {
   //   -> movement -> crowd -> growth (Task 13) -> economy day rollover (Task 9)
   stepTrains(w);
   stepSpawner(w, dtReal * GAME_MIN_PER_REAL_SEC);
+  stepNeeds(w, dtReal * GAME_MIN_PER_REAL_SEC);
   stepFacilities(w, dtReal * GAME_MIN_PER_REAL_SEC);
-  const arrived = stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, dtReal);
+  const arrived = stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, dtReal, w.rng);
   handleArrivals(w, arrived);
   w.crowd.rebuild(w.people, w.grid);
   rollDays(w);
