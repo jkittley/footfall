@@ -52,3 +52,13 @@ test("a save that parses but fails its checks is treated as corrupt", () => {
   expect(notice).toBe(CORRUPT_SAVE_NOTICE);
   expect(s.store.has("footfall.save.corrupt")).toBe(true);
 });
+
+test("a version 1 save (before island platforms) is stashed and a new game starts with the notice", () => {
+  const v1 = JSON.stringify({ ...(JSON.parse(serialise(createWorld(5))) as object), version: 1 });
+  const s = fakeStore({ "footfall.save.v1": v1 });
+  const { world, notice } = bootWorld({ load: s.load, stashCorrupt: s.stashCorrupt, newSeed: () => 9 });
+  expect(world.seed).toBe(9);
+  expect(notice).toBe(CORRUPT_SAVE_NOTICE);
+  expect(s.store.get("footfall.save.corrupt")).toBe(v1);
+  expect(s.store.has("footfall.save.v1")).toBe(false);
+});

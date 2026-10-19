@@ -116,7 +116,8 @@ test("an unobstructed station has a very high on-time rate", () => {
   let onTime = 0;
   let all = 0;
   for (const e of w.events) {
-    if (e.kind !== "outcome") continue;
+    // A line closure's cancellations are refunded and kept out of the meter; they are not misses.
+    if (e.kind !== "outcome" || e.excluded) continue;
     all++;
     if (e.onTime) onTime++;
   }

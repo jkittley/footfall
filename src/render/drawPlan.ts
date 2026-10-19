@@ -1,7 +1,7 @@
 import { FacilityKind, type Facility } from "../sim/facilities";
 import { Dir, Tile, Zone, type Grid, type Rect } from "../sim/grid";
 import type { World } from "../sim/world";
-import { platformLabelVariants, retailLabel, type Run } from "./labels";
+import { futurePairLabel, platformLabelVariants, retailLabel, type Run } from "./labels";
 import { CIRCLE, DOT, FLOOR, GROUND, INK, INK_2, SQUARE, TRACK, WALL } from "./palette";
 import { clamp, drawRuns, runsWidth, uiFont, wrapWords } from "./text";
 import { rectInView, snap, sx, sy, type View } from "./view";
@@ -37,7 +37,7 @@ function rectPx(v: View, r: Rect): [number, number, number, number] {
 
 /**
  * Everything that only changes with the grid: ground and its dot grid, obstacles, floor, track,
- * platform edges, reserved slots, walls, rails, facility bodies, travelators and entrances.
+ * platform edges, future islands, walls, rails, facility bodies, travelators and entrances.
  */
 export function drawStatic(ctx: CanvasRenderingContext2D, w: World, v: View): void {
   ctx.fillStyle = GROUND;
@@ -47,7 +47,7 @@ export function drawStatic(ctx: CanvasRenderingContext2D, w: World, v: View): vo
   drawFloor(ctx, w.grid, v);
   drawTrack(ctx, w.grid, v);
   drawPlatformEdges(ctx, w.grid, v);
-  drawFutureSlots(ctx, w, v);
+  drawFutureIslands(ctx, w, v);
   drawFacilityBodies(ctx, w, v);
   drawTravelators(ctx, w.grid, v);
   drawEdges(ctx, w.grid, v);
@@ -240,31 +240,55 @@ function drawPlatformEdges(ctx: CanvasRenderingContext2D, g: Grid, v: View): voi
   ctx.stroke(p);
 }
 
-/** The track and platform of each slot not yet opened, as a faint dashed outline with its name. */
-function drawFutureSlots(ctx: CanvasRenderingContext2D, w: World, v: View): void {
+/** Dashed outline style shared by future islands and future platforms. */
+function futureStyle(ctx: CanvasRenderingContext2D, v: View): number {
   const size = clamp(11 * v.cam.zoom, 9, 13);
-  ctx.save();
   ctx.setLineDash([4, 4]);
   ctx.lineWidth = 1;
   ctx.strokeStyle = INK_2;
   ctx.font = uiFont(size, 500);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  return size;
+}
+
+/** A faint dashed outline of `r` with `text` running up its middle, where it fits. */
+function drawFutureOutline(ctx: CanvasRenderingContext2D, v: View, r: Rect, text: string, size: number): void {
+  if (!rectInView(v, r.x, r.y, r.w, r.h)) return;
+  const [x, y, ww, hh] = rectPx(v, r);
+  ctx.globalAlpha = 0.45;
+  ctx.strokeRect(x + 0.5, y + 0.5, ww - 1, hh - 1);
+  if (ctx.measureText(text).width + 8 > hh || size + 4 > ww) return;
+  ctx.globalAlpha = 0.7;
+  ctx.fillStyle = INK_2;
+  ctx.save();
+  ctx.translate(x + ww / 2, y + hh / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+/** Each island with no platform opened yet (so none painted), as one dashed outline naming its pair. */
+function drawFutureIslands(ctx: CanvasRenderingContext2D, w: World, v: View): void {
+  ctx.save();
+  const size = futureStyle(ctx, v);
+  for (const isl of w.map.islands) {
+    if (2 * isl.id - 1 <= w.platformsAdded) continue;
+    drawFutureOutline(ctx, v, union(isl.leftTrack, isl.rightTrack), futurePairLabel(isl.id), size);
+  }
+  ctx.restore();
+}
+
+/**
+ * The unopened partner on an island already painted: its track and half as a dashed outline. Drawn
+ * with the dynamic layer, since opening it changes no tiles.
+ */
+function drawFuturePartners(ctx: CanvasRenderingContext2D, w: World, v: View): void {
+  ctx.save();
+  const size = futureStyle(ctx, v);
   for (const slot of w.map.slots.slice(w.platformsAdded)) {
-    const r = union(slot.track, slot.platform);
-    if (!rectInView(v, r.x, r.y, r.w, r.h)) continue;
-    const [x, y, ww, hh] = rectPx(v, r);
-    ctx.globalAlpha = 0.45;
-    ctx.strokeRect(x + 0.5, y + 0.5, ww - 1, hh - 1);
-    const text = `Future platform ${slot.id}`;
-    if (ctx.measureText(text).width + 8 > hh || size + 4 > ww) continue;
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = INK_2;
-    ctx.save();
-    ctx.translate(x + ww / 2, y + hh / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText(text, 0, 0);
-    ctx.restore();
+    if (2 * slot.island - 1 > w.platformsAdded) continue;
+    drawFutureOutline(ctx, v, union(slot.track, slot.platform), `Future platform ${slot.id}`, size);
   }
   ctx.restore();
 }
@@ -549,11 +573,13 @@ function drawEntrances(ctx: CanvasRenderingContext2D, w: World, v: View): void {
 }
 
 /**
- * The parts of the plan that change without the grid: closed platforms dimmed, platform labels,
+ * The parts of the plan that change without the grid: closed platforms dimmed, the unopened half
+ * of a painted island, platform labels,
  * retail tenants and countdowns, and signs (they re-point as tenants come and go).
  */
 export function drawPlanDynamic(ctx: CanvasRenderingContext2D, w: World, v: View): void {
   drawClosedPlatforms(ctx, w, v);
+  drawFuturePartners(ctx, w, v);
   drawPlatformLabels(ctx, w, v);
   drawRetailLabels(ctx, w, v);
   drawSigns(ctx, w, v);

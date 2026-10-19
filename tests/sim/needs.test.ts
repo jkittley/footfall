@@ -11,7 +11,7 @@ import { FieldCache, walkMinutes } from "../../src/sim/routeField";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
 import { openFloor, runMinutes } from "./helpers";
 
-// An island of floor in the empty slot field: no spawned passenger can reach it.
+// A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
 const ISLAND: Rect = { x: 60, y: 30, w: 20, h: 20 };
 
 function islandWorld(): World {
@@ -252,7 +252,8 @@ test("errands never make a fair-deadline person miss on an empty map", () => {
   let onTime = 0;
   let all = 0;
   for (const e of w.events) {
-    if (e.kind !== "outcome") continue;
+    // A line closure's cancellations are refunded and kept out of the meter; they are not misses.
+    if (e.kind !== "outcome" || e.excluded) continue;
     all++;
     if (e.onTime) onTime++;
   }

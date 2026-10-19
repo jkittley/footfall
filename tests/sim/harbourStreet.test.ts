@@ -23,10 +23,41 @@ describe("Harbour Street", () => {
 
   test("slot geometry follows the layout rules", () => {
     for (const s of HARBOUR_STREET.slots) {
-      const x = 8 + 4 * (s.id - 1);
-      expect(s.track).toMatchObject({ x, w: 1, h: 30 });
-      expect(s.platform).toMatchObject({ x: x + 1, w: 2, h: 30, y: s.track.y });
-      expect(s.foot.y).toBe(s.track.y + 30);
+      const x0 = 8 + 7 * (s.island - 1);
+      const left = s.side === "left";
+      expect(s.track).toMatchObject({ x: left ? x0 : x0 + 5, w: 1, h: 30 });
+      expect(s.platform).toMatchObject({ x: left ? x0 + 1 : x0 + 3, w: 2, h: 30, y: s.track.y });
+      expect(s.foot).toEqual(HARBOUR_STREET.islands[s.island - 1]!.foot);
+      expect(s.foot).toMatchObject({ x: x0, w: 7, y: s.track.y + 30 });
+    }
+  });
+
+  test("9 islands, 18 slots, slot 2i-1 left and 2i right of island i", () => {
+    const m = HARBOUR_STREET;
+    expect(m.islands).toHaveLength(9);
+    expect(m.slots).toHaveLength(18);
+    for (const isl of m.islands) {
+      const x0 = 8 + 7 * (isl.id - 1);
+      expect(isl.walkway).toEqual({ x: x0 + 1, y: 24, w: 4, h: 30 });
+      expect(isl.leftTrack).toEqual({ x: x0, y: 24, w: 1, h: 30 });
+      expect(isl.rightTrack).toEqual({ x: x0 + 5, y: 24, w: 1, h: 30 });
+      const left = m.slots[2 * isl.id - 2]!;
+      const right = m.slots[2 * isl.id - 1]!;
+      expect(left).toMatchObject({ id: 2 * isl.id - 1, island: isl.id, side: "left", track: isl.leftTrack });
+      expect(right).toMatchObject({ id: 2 * isl.id, island: isl.id, side: "right", track: isl.rightTrack });
+    }
+    const s3 = m.slots[2]!;
+    expect(s3).toMatchObject({ island: 2, side: "left" });
+    expect(s3.platform).toEqual({ x: 15 + 1, y: 24, w: 2, h: 30 });
+  });
+
+  test("islands 2..9 are all Ground in the starting grid and clear of obstacles", () => {
+    const g = buildGrid(HARBOUR_STREET, 2);
+    for (const isl of HARBOUR_STREET.islands.slice(1)) {
+      for (const r of [isl.walkway, isl.leftTrack, isl.rightTrack, isl.foot]) {
+        for (const o of HARBOUR_STREET.obstacles) expect(overlaps(r, o.rect)).toBe(false);
+        for (const [x, y] of tilesOf(r)) expect(g.tile(x, y)).toBe(Tile.Ground);
+      }
     }
   });
 

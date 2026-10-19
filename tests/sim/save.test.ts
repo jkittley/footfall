@@ -99,6 +99,12 @@ test("refuses an unknown version", () => {
   expect(() => deserialise(JSON.stringify({ ...save, version: 99 }))).toThrow("Unsupported save version");
 });
 
+test("a version 1 save is refused", () => {
+  expect(SAVE_VERSION).toBe(2);
+  const save = JSON.parse(serialise(createWorld(1))) as Record<string, unknown>;
+  expect(() => deserialise(JSON.stringify({ ...save, version: 1 }))).toThrow("Unsupported save version");
+});
+
 test("the world asks for an autosave once per game hour crossed", () => {
   const w = createWorld(1);
   const autosaves = (): number => w.events.splice(0).filter((e) => e.kind === "autosave").length;

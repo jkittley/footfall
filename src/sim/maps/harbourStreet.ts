@@ -1,7 +1,19 @@
 import { Grid, Tile, type Rect } from "../grid";
 
+/** One island: a shared walkway with a track either side, and a foot joining it to the concourse. */
+export interface IslandDef {
+  id: number;
+  walkway: Rect;
+  leftTrack: Rect;
+  rightTrack: Rect;
+  foot: Rect;
+}
+
+/** One platform: its island's left or right track, and its half of the walkway (its own waiting area). */
 export interface PlatformSlot {
   id: number;
+  island: number;
+  side: "left" | "right";
   track: Rect;
   platform: Rect;
   foot: Rect;
@@ -24,6 +36,7 @@ export interface StationMap {
   w: 120;
   h: 90;
   startingPlatforms: 2;
+  islands: IslandDef[];
   slots: PlatformSlot[];
   entrances: EntranceDef[];
   obstacles: ObstacleDef[];
@@ -34,18 +47,33 @@ const PLATFORM_TOP = 24;
 const PLATFORM_LEN = 30;
 const CONCOURSE_TOP = PLATFORM_TOP + PLATFORM_LEN;
 
-function makeSlot(id: number): PlatformSlot {
-  const x = 8 + 4 * (id - 1);
+function makeIsland(id: number): IslandDef {
+  const x0 = 8 + 7 * (id - 1);
   return {
     id,
-    track: { x, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
-    platform: { x: x + 1, y: PLATFORM_TOP, w: 2, h: PLATFORM_LEN },
+    walkway: { x: x0 + 1, y: PLATFORM_TOP, w: 4, h: PLATFORM_LEN },
+    leftTrack: { x: x0, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
+    rightTrack: { x: x0 + 5, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
     // Spans the gap column too, so neighbouring aprons join into one concourse.
-    foot: { x, y: CONCOURSE_TOP, w: 4, h: 2 },
+    foot: { x: x0, y: CONCOURSE_TOP, w: 7, h: 2 },
   };
 }
 
-// The slot field (every slot's track, platform and foot) stays obstacle-free so
+function makeSlot(id: number): PlatformSlot {
+  const island = makeIsland(Math.ceil(id / 2));
+  const left = id % 2 === 1;
+  const half = left ? island.walkway.x : island.walkway.x + 2;
+  return {
+    id,
+    island: island.id,
+    side: left ? "left" : "right",
+    track: left ? island.leftTrack : island.rightTrack,
+    platform: { x: half, y: PLATFORM_TOP, w: 2, h: PLATFORM_LEN },
+    foot: island.foot,
+  };
+}
+
+// The island field (every island's tracks, walkway and foot, x 8..70) stays obstacle-free so
 // platforms can be painted later. Rows 22-23 are a Ground buffer between the
 // track bed and the platform tops. Pinch points sit east of the field (x 84..95)
 // and at the canal crossing: the route to Quay Lane must use each of them.
@@ -77,6 +105,7 @@ export const HARBOUR_STREET: StationMap = {
   w: 120,
   h: 90,
   startingPlatforms: 2,
+  islands: Array.from({ length: 9 }, (_, i) => makeIsland(i + 1)),
   slots: Array.from({ length: 18 }, (_, i) => makeSlot(i + 1)),
   entrances: [
     { id: "A", name: "Harbour Road", tiles: { x: 9, y: 79, w: 4, h: 1 }, weight: 3 },
@@ -95,10 +124,26 @@ function fill(grid: Grid, r: Rect, t: Tile): void {
   for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) grid.setTile(x, y, t);
 }
 
+/** Every rect of an island's footprint: walkway, both tracks and foot. */
+export function islandRects(island: IslandDef): Rect[] {
+  return [island.walkway, island.leftTrack, island.rightTrack, island.foot];
+}
+
+export function isIslandPainted(grid: Grid, island: IslandDef): boolean {
+  return grid.tile(island.walkway.x, island.walkway.y) === Tile.Platform;
+}
+
+export function paintIsland(grid: Grid, island: IslandDef): void {
+  fill(grid, island.leftTrack, Tile.Track);
+  fill(grid, island.rightTrack, Tile.Track);
+  fill(grid, island.walkway, Tile.Platform);
+  fill(grid, island.foot, Tile.Floor);
+}
+
+/** Paints the slot's island unless its partner already has; the second of a pair paints nothing. */
 export function paintSlot(grid: Grid, slot: PlatformSlot): void {
-  fill(grid, slot.track, Tile.Track);
-  fill(grid, slot.platform, Tile.Platform);
-  fill(grid, slot.foot, Tile.Floor);
+  const island = makeIsland(slot.island);
+  if (!isIslandPainted(grid, island)) paintIsland(grid, island);
 }
 
 export function buildGrid(map: StationMap, platformsAdded: number): Grid {

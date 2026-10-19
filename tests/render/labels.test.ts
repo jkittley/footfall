@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockTime, countdown, platformLabel, platformLabelVariants, retailLabel, runsText } from "../../src/render/labels";
+import { clockTime, countdown, futurePairLabel, platformLabel, platformLabelVariants, retailLabel, runsText } from "../../src/render/labels";
 import { startDisruption } from "../../src/sim/disruptions";
 import { FacilityKind, Tenant, createFacility } from "../../src/sim/facilities";
 import { deactivatePlatform } from "../../src/sim/growth";
@@ -9,6 +9,12 @@ describe("label formatting", () => {
   it("writes clock times as HH:MM within the day", () => {
     expect(clockTime(300)).toBe("05:00");
     expect(clockTime(1440 + 8 * 60 + 51.7)).toBe("08:51");
+  });
+
+  it("names a future island by its pair of platforms, with no em-dash", () => {
+    expect(futurePairLabel(3)).toBe("Future platforms 5 and 6");
+    expect(futurePairLabel(9)).toBe("Future platforms 17 and 18");
+    expect(futurePairLabel(1)).not.toMatch(/\u2014/);
   });
 
   it("writes countdowns as H:MM, rounding up and never below zero", () => {

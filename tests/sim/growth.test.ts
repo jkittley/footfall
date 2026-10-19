@@ -4,7 +4,7 @@ import { FacilityKind, createFacility } from "../../src/sim/facilities";
 import { Tile, Zone } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
 import { activePlatformIds, createWorld, recordOutcome, type World } from "../../src/sim/world";
-import { platformTiles } from "./helpers";
+import { platformTiles, tilesOf } from "./helpers";
 
 function toasts(w: World): string[] {
   return w.events.flatMap((e) => (e.kind === "toast" ? [e.text] : []));
@@ -212,4 +212,36 @@ test("a platform opening over an old build clears the zone and frees its people"
   expect(w.grid.zone(foot.x, foot.y)).toBe(Zone.None);
   expect(w.people.state[i]).toBe(PState.Walking);
   expect(w.people.targetKey[i]).toBe("platform:1");
+});
+
+test("opening platform 3 paints island 2; opening platform 4 changes no tiles", () => {
+  const w = createWorld(1);
+  const island = w.map.islands[1]!;
+  addPlatform(w, 3);
+  for (const [r, t] of [
+    [island.walkway, Tile.Platform],
+    [island.leftTrack, Tile.Track],
+    [island.rightTrack, Tile.Track],
+    [island.foot, Tile.Floor],
+  ] as const)
+    for (const [x, y] of tilesOf(r)) expect(w.grid.tile(x, y)).toBe(t);
+  const v = w.grid.version;
+  w.events.length = 0;
+  addPlatform(w, 4);
+  expect(w.grid.version).toBe(v);
+  expect(w.platformsAdded).toBe(4);
+  expect(w.platformActive[3]).toBe(true);
+  expect(toasts(w)).toEqual(["Platform 4 opens"]);
+});
+
+test("opening an island clears old builds across its whole footprint", () => {
+  const w = createWorld(1);
+  const island = w.map.islands[1]!;
+  // The gap column at the island's right sits in its foot but in neither slot's half.
+  const x = island.foot.x + 6;
+  for (const [tx, ty] of tilesOf(island.foot)) w.grid.setTile(tx, ty, Tile.Floor);
+  const seat = createFacility(w, FacilityKind.Seating, { x, y: island.foot.y, w: 1, h: 2 });
+  addPlatform(w, 3);
+  expect(w.facilities.has(seat.id)).toBe(false);
+  expect(w.grid.zone(x, island.foot.y)).toBe(Zone.None);
 });

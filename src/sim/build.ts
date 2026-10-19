@@ -127,16 +127,21 @@ function inRect(r: Rect, x: number, y: number): boolean {
 }
 
 /**
- * Tiles in the rect that a slot not yet opened keeps for itself: its track and platform take
- * nothing, and its foot takes only floor (how the player joins it up before it opens).
+ * Tiles in the rect that an island with no platform opened yet keeps for itself: its walkway and
+ * tracks take nothing, and its foot takes only floor (how the player joins it up before it opens).
  */
 function reservedTiles(w: World, tool: ToolId, rect: Rect): number[] {
   const g = w.grid;
-  const unopened = w.map.slots.slice(w.platformsAdded);
+  const opened = new Set(w.map.slots.slice(0, w.platformsAdded).map((s) => s.island));
+  const unopened = w.map.islands.filter((isl) => !opened.has(isl.id));
   return rectTiles(g, rect).filter((i) => {
     const [x, y] = g.xy(i);
     return unopened.some(
-      (s) => inRect(s.track, x, y) || inRect(s.platform, x, y) || (tool !== "floor" && inRect(s.foot, x, y)),
+      (isl) =>
+        inRect(isl.walkway, x, y) ||
+        inRect(isl.leftTrack, x, y) ||
+        inRect(isl.rightTrack, x, y) ||
+        (tool !== "floor" && inRect(isl.foot, x, y)),
     );
   });
 }

@@ -118,18 +118,19 @@ test("nothing to remove and a blocked entrance are refused with reasons", () => 
 
 test("separate entrance-to-platform regions that already exist do not freeze building", () => {
   const w = createWorld(1);
-  // Split the station in two: Market Place and Platform 1 west of x 11, Harbour Road and Platform 2 east.
-  for (let y = 54; y <= 59; y++) w.grid.setTile(11, y, Tile.Wall);
-  w.grid.setTile(9, 60, Tile.Wall);
-  w.grid.setTile(10, 60, Tile.Wall);
+  // Split the station in two: a wall across the top of the floor column cuts Harbour Road off from
+  // the concourse, leaving Market Place with island 1 (both its platforms share one walkway).
+  for (let x = 9; x <= 12; x++) w.grid.setTile(x, 60, Tile.Wall);
   expect(reachable(w.grid, entranceTiles("A"), platformTiles(1))).toBe(false);
-  expect(reachable(w.grid, entranceTiles("A"), platformTiles(2))).toBe(true);
+  expect(reachable(w.grid, entranceTiles("A"), platformTiles(2))).toBe(false);
   expect(reachable(w.grid, entranceTiles("B"), platformTiles(1))).toBe(true);
+  expect(reachable(w.grid, entranceTiles("B"), platformTiles(2))).toBe(true);
+  // Joins the floor column below the wall, on Harbour Road's side.
   const p = previewPlacement(w, "floor", { x: 5, y: 61, w: 4, h: 2 });
   expect(p.reason).toBeNull();
   expect(p.valid).toBe(true);
-  // Cutting either half is still refused.
-  expect(previewPlacement(w, "wall", { x: 8, y: 54, w: 3, h: 1 }).reason).toBe("Would cut off Platform 1");
+  // Cutting Market Place's side is still refused.
+  expect(previewPlacement(w, "wall", wallAcrossPlatformOneFoot(w)).reason).toBe("Would cut off Platform 1");
   expect(previewPlacement(w, "remove", { x: 1, y: 55, w: 5, h: 3 }).reason).toBe("Would cut off Platform 1");
 });
 
@@ -182,11 +183,11 @@ test("remove refunds half and keeps platforms reachable", () => {
   // The wall's tiles are plain floor again, not ground.
   expect(w.grid.tile(6, 58)).toBe(Tile.Floor);
 
-  // Wall the two aprons apart: Platform 2's only way down is then row 56 under its own apron.
-  expect(applyPlacement(w, previewPlacement(w, "wall", { x: 11, y: 54, w: 1, h: 2 }))).toBe(true);
+  // Wall along island 1's foot but for its east end: the island's only way down is then (14, 56).
+  expect(applyPlacement(w, previewPlacement(w, "wall", { x: 8, y: 55, w: 6, h: 1 }))).toBe(true);
   const cut = previewPlacement(w, "remove", { x: 12, y: 56, w: 4, h: 1 });
   expect(cut.valid).toBe(false);
-  expect(cut.reason).toBe("Would cut off Platform 2");
+  expect(cut.reason).toBe("Would cut off Platform 1");
 });
 
 test("previews never change the world", () => {

@@ -63,6 +63,11 @@ export function platformLabelVariants(w: World, slotId: number): Run[][] {
   ];
 }
 
+/** "Future platforms 5 and 6": the dashed outline of island `islandId` before either opens. */
+export function futurePairLabel(islandId: number): string {
+  return `Future platforms ${2 * islandId - 1} and ${2 * islandId}`;
+}
+
 /** The tenant's name, or "To let · tenant in 0:40" until one moves in. */
 export function retailLabel(f: Facility, minute: number): Run[] {
   if (f.tenant !== Tenant.None) return [{ text: TENANTS[f.tenant].name, strong: true }];

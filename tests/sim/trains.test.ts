@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
-import { createWorld, type World } from "../../src/sim/world";
+import { createWorld, walkableTargets, type World } from "../../src/sim/world";
+import { deactivatePlatform } from "../../src/sim/growth";
 import { stepTrains } from "../../src/sim/trains";
 import { PState } from "../../src/sim/people";
 import { platformTiles, runMinutes } from "./helpers";
@@ -82,4 +83,55 @@ test("a passenger booked on a cancelled service is rebooked, not left dangling",
   expect(next!.cancelled).toBe(false);
   expect(w.people.goalKey[i]).toBe(`platform:${next!.platformId}`);
   expect(outcomes(w)).toEqual([]);
+});
+
+function waitingAt(w: World, platformId: number, [tx, ty]: [number, number]): number {
+  const i = w.people.alloc();
+  w.people.x[i] = tx + 0.5;
+  w.people.y[i] = ty + 0.5;
+  w.people.state[i] = PState.Waiting;
+  w.people.serviceId[i] = firstService(w, platformId).id;
+  return i;
+}
+
+test("a platform-2 passenger waits on the right half and boards from it", () => {
+  const w = createWorld(2);
+  const right = new Set(platformTiles(2).map(([x, y]) => w.grid.idx(x, y)));
+  const spots = walkableTargets(w, "platform:2");
+  expect(spots.length).toBe(right.size);
+  for (const t of spots) expect(right.has(t)).toBe(true);
+  // On platform 1's half of the same walkway, a platform-2 passenger is not on their platform.
+  const wrongHalf = waitingAt(w, 2, platformTiles(1)[10]!);
+  const rightHalf = waitingAt(w, 2, platformTiles(2)[10]!);
+  w.minute = firstService(w, 2).arriveAt + 1;
+  stepTrains(w);
+  expect(w.people.isAlive(rightHalf)).toBe(false);
+  expect(w.people.isAlive(wrongHalf)).toBe(true);
+});
+
+test("waiting passengers stand on their own platform's half", () => {
+  const w = createWorld(8);
+  runMinutes(w, 120);
+  let checked = 0;
+  for (let i = 0; i < w.people.end; i++) {
+    if (!w.people.isAlive(i) || w.people.state[i] !== PState.Waiting) continue;
+    const key = w.people.targetKey[i]!;
+    const s = w.timetable.services.get(w.people.serviceId[i]!);
+    if (!key.startsWith("spot:") || !s) continue;
+    const half = new Set(platformTiles(s.platformId).map(([x, y]) => w.grid.idx(x, y)));
+    expect(half.has(Number(key.slice(5)))).toBe(true);
+    checked++;
+  }
+  expect(checked).toBeGreaterThan(0);
+});
+
+test("deactivating platform 2 leaves platform 1 boarding normally", () => {
+  const w = createWorld(2);
+  deactivatePlatform(w, 2);
+  expect(w.timetable.upcoming(1, w.minute).length).toBeGreaterThan(0);
+  const i = waitingAt(w, 1, platformTiles(1)[10]!);
+  w.minute = firstService(w, 1).arriveAt + 1;
+  stepTrains(w);
+  expect(w.people.isAlive(i)).toBe(false);
+  expect(outcomes(w)).toEqual([{ kind: "outcome", personId: i, onTime: true, excluded: false }]);
 });

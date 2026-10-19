@@ -26,7 +26,7 @@ import { Rng } from "../../src/sim/rng";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
 import { runMinutes } from "./helpers";
 
-// An island of floor in the empty slot field: no spawned passenger can reach it.
+// A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
 const ISLAND: Rect = { x: 60, y: 30, w: 20, h: 20 };
 const UNIT: Rect = { x: 68, y: 40, w: 2, h: 2 };
 

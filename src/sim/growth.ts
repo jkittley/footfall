@@ -8,7 +8,7 @@ import {
 } from "./constants";
 import { refreshAccess, removeFacility } from "./facilities";
 import { Dir, Zone, type Rect } from "./grid";
-import { paintSlot, type PlatformSlot } from "./maps/harbourStreet";
+import { isIslandPainted, islandRects, paintSlot, type PlatformSlot } from "./maps/harbourStreet";
 import { nudgeToWalkable } from "./movement";
 import { refreshSigns } from "./needs";
 import { rebook, rebookContext } from "./spawner";
@@ -138,8 +138,9 @@ function staysOpen(w: World, closing: number): boolean {
 }
 
 /**
- * Paints the next slot's track, platform and foot and opens it. It may stand unconnected until the
- * player builds floor to its foot. Anyone on a tile that is no longer walkable steps off it.
+ * Opens the next slot, painting its island (walkway, both tracks, foot) if its partner has not
+ * already. It may stand unconnected until the player builds floor to its foot. Anyone on a tile
+ * that is no longer walkable steps off it.
  */
 export function addPlatform(w: World, slotId: number): void {
   const slot = w.map.slots[slotId - 1];
@@ -163,11 +164,14 @@ function overlaps(a: Rect, b: Rect): boolean {
 }
 
 /**
- * Building on an unopened slot is refused, but an old save may still have something there: any
- * facility touching it comes down (its people walk on) and any travelator tile on it is cleared.
+ * Building on an unopened island is refused, but an old save may still have something there: as
+ * the island is first painted, any facility touching its footprint comes down (its people walk on)
+ * and any travelator tile on it is cleared.
  */
 function clearSlot(w: World, slot: PlatformSlot): void {
-  const rects = [slot.track, slot.platform, slot.foot];
+  const island = w.map.islands[slot.island - 1]!;
+  if (isIslandPainted(w.grid, island)) return;
+  const rects = islandRects(island);
   for (const f of [...w.facilities.values()]) if (rects.some((r) => overlaps(f.rect, r))) removeFacility(w, f);
   const g = w.grid;
   for (const r of rects) {

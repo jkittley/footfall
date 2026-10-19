@@ -12,7 +12,7 @@ import { checkSave } from "./saveCheck";
 import { Timetable, type Service } from "./timetable";
 import { createWorld, type World } from "./world";
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 /** The only map so far; its layout is constant data, so a save names it rather than storing it. */
 const MAP_ID = "harbour-street";
 
