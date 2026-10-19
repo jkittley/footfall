@@ -58,17 +58,47 @@ export function fillGroundWithFloor(g: Grid): void {
   for (let y = 0; y < g.h; y++) for (let x = 0; x < g.w; x++) if (g.tile(x, y) === Tile.Ground) g.setTile(x, y, Tile.Floor);
 }
 
+/** BFS shortest path (4-neighbour) over walkable tiles, or null. */
+export function shortestPath(g: Grid, from: XY[], to: XY[]): XY[] | null {
+  const targets = new Set(to.map(([x, y]) => g.idx(x, y)));
+  const parent = new Int32Array(g.w * g.h).fill(-2);
+  const queue: number[] = [];
+  for (const [x, y] of from) {
+    if (!g.isWalkable(x, y)) continue;
+    const i = g.idx(x, y);
+    parent[i] = -1;
+    queue.push(i);
+  }
+  for (let head = 0; head < queue.length; head++) {
+    const i = queue[head]!;
+    if (targets.has(i)) {
+      const path: XY[] = [];
+      for (let c = i; c !== -1; c = parent[c]!) path.push(g.xy(c));
+      return path.reverse();
+    }
+    const [x, y] = g.xy(i);
+    for (const [dx, dy] of DIRS) {
+      if (!g.isWalkable(x + dx, y + dy)) continue;
+      const ni = g.idx(x + dx, y + dy);
+      if (parent[ni] !== -2) continue;
+      parent[ni] = i;
+      queue.push(ni);
+    }
+  }
+  return null;
+}
+
 /**
- * Counts distinct narrow gaps: a run of min..max non-obstacle tiles in a row or
- * column with obstacles at both ends. Runs repeating with the same extent on
- * consecutive lines are one gap.
+ * Narrow gaps: runs of min..max non-obstacle tiles in a row or column with
+ * obstacles at both ends. A run repeating with the same extent on consecutive
+ * lines is one gap (otherwise a 10-row-long channel would count 10 times).
  */
-export function countNarrowGaps(map: StationMap, min: number, max: number): number {
+export function narrowGaps(map: StationMap, min: number, max: number): XY[][] {
   const blocked = new Uint8Array(map.w * map.h);
   for (const o of map.obstacles) for (const [x, y] of tilesOf(o.rect)) blocked[y * map.w + x] = 1;
   const at = (x: number, y: number) => blocked[y * map.w + x] === 1;
-  const found = new Set<string>();
-  let count = 0;
+  const gaps: XY[][] = [];
+  const open = new Map<string, XY[]>();
   const scan = (horizontal: boolean) => {
     const lines = horizontal ? map.h : map.w;
     const len = horizontal ? map.w : map.h;
@@ -80,13 +110,17 @@ export function countNarrowGaps(map: StationMap, min: number, max: number): numb
           if (start < 0) start = p;
           continue;
         }
-        if (start > 0 && p < len) {
-          const run = p - start;
-          if (run >= min && run <= max) {
-            const key = `${horizontal ? "h" : "v"}:${start}:${run}:${line}`;
-            const prev = `${horizontal ? "h" : "v"}:${start}:${run}:${line - 1}`;
-            if (!found.has(prev)) count++;
-            found.add(key);
+        if (start > 0 && p < len && p - start >= min && p - start <= max) {
+          const tag = `${horizontal ? "h" : "v"}:${start}:${p - start}`;
+          const tiles: XY[] = [];
+          for (let q = start; q < p; q++) tiles.push(horizontal ? [q, line] : [line, q]);
+          const existing = open.get(`${tag}:${line - 1}`);
+          if (existing) {
+            existing.push(...tiles);
+            open.set(`${tag}:${line}`, existing);
+          } else {
+            gaps.push(tiles);
+            open.set(`${tag}:${line}`, tiles);
           }
         }
         start = -1;
@@ -95,5 +129,9 @@ export function countNarrowGaps(map: StationMap, min: number, max: number): numb
   };
   scan(true);
   scan(false);
-  return count;
+  return gaps;
+}
+
+export function countNarrowGaps(map: StationMap, min: number, max: number): number {
+  return narrowGaps(map, min, max).length;
 }

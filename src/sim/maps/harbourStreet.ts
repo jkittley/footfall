@@ -45,8 +45,10 @@ function makeSlot(id: number): PlatformSlot {
   };
 }
 
-// Rows 54-61 across the platform range and everything inside x 6..81 between
-// rows 22 and 61 stay clear: the player builds the concourse and platforms there.
+// The slot field (every slot's track, platform and foot) stays obstacle-free so
+// platforms can be painted later. Rows 22-23 are a Ground buffer between the
+// track bed and the platform tops. Pinch points sit east of the field (x 84..95)
+// and at the canal crossing: the route to Quay Lane must use each of them.
 const OBSTACLES: ObstacleDef[] = [
   { name: "Track bed (north throat)", rect: { x: 6, y: 0, w: 76, h: 22 } },
   { name: "Neighbouring offices", rect: { x: 0, y: 20, w: 5, h: 30 } },
@@ -58,9 +60,13 @@ const OBSTACLES: ObstacleDef[] = [
   { name: "Bus lane", rect: { x: 54, y: 62, w: 30, h: 3 } },
   { name: "Harbour Road", rect: { x: 0, y: 80, w: 120, h: 10 } },
   { name: "Coal depot", rect: { x: 84, y: 4, w: 10, h: 18 } },
-  { name: "Goods shed", rect: { x: 84, y: 28, w: 8, h: 6 } },
-  { name: "Signal box", rect: { x: 84, y: 38, w: 4, h: 6 } },
-  { name: "Ashby Canal (north reach)", rect: { x: 96, y: 0, w: 6, h: 55 } },
+  { name: "Goods shed", rect: { x: 84, y: 22, w: 4, h: 34 } },
+  { name: "Coal wharf sidings", rect: { x: 84, y: 59, w: 4, h: 21 } },
+  { name: "Signal works (north)", rect: { x: 90, y: 22, w: 3, h: 22 } },
+  { name: "Signal works (south)", rect: { x: 90, y: 47, w: 3, h: 33 } },
+  { name: "Station Master's House (listed)", rect: { x: 30, y: 57, w: 8, h: 5 } },
+  { name: "Left luggage office", rect: { x: 52, y: 57, w: 6, h: 4 } },
+  { name: "Ashby Canal (north reach)", rect: { x: 96, y: 0, w: 6, h: 56 } },
   { name: "Ashby Canal (south reach)", rect: { x: 96, y: 60, w: 6, h: 20 } },
   { name: "Quay warehouse", rect: { x: 104, y: 20, w: 12, h: 20 } },
   { name: "Customs yard", rect: { x: 104, y: 64, w: 12, h: 10 } },
@@ -79,7 +85,7 @@ export const HARBOUR_STREET: StationMap = {
   ],
   obstacles: OBSTACLES,
   startingFloor: [
-    { x: 6, y: CONCOURSE_TOP, w: 12, h: 6 },
+    { x: 6, y: CONCOURSE_TOP + 2, w: 10, h: 4 },
     { x: 9, y: 60, w: 4, h: 19 },
     { x: 1, y: 55, w: 5, h: 3 },
   ],

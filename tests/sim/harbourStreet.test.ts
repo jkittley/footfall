@@ -6,8 +6,10 @@ import {
   entranceTiles,
   fillGroundWithFloor,
   overlaps,
+  narrowGaps,
   platformTiles,
   reachable,
+  shortestPath,
   tilesOf,
 } from "./helpers";
 
@@ -39,6 +41,40 @@ describe("Harbour Street", () => {
     }
     for (const o of m.obstacles)
       for (const r of [...m.entrances.map((e) => e.tiles), ...m.startingFloor]) expect(overlaps(o.rect, r)).toBe(false);
+  });
+
+  test("slots 3 to 18 are entirely Ground in the starting grid", () => {
+    const g = buildGrid(HARBOUR_STREET, 2);
+    for (const s of HARBOUR_STREET.slots.slice(2))
+      for (const r of [s.track, s.platform, s.foot])
+        for (const [x, y] of tilesOf(r)) expect(g.tile(x, y)).toBe(Tile.Ground);
+  });
+
+  test("blocking the canal crossing cuts off Quay Lane", () => {
+    const g = buildGrid(HARBOUR_STREET, 18);
+    fillGroundWithFloor(g);
+    expect(reachable(g, entranceTiles("A"), entranceTiles("C"))).toBe(true);
+    for (let y = 56; y < 60; y++) for (let x = 96; x < 102; x++) g.setTile(x, y, Tile.Obstacle);
+    expect(reachable(g, entranceTiles("A"), entranceTiles("C"))).toBe(false);
+  });
+
+  test("the shortest route from A to C passes through at least 3 narrow gaps", () => {
+    const g = buildGrid(HARBOUR_STREET, 18);
+    fillGroundWithFloor(g);
+    const path = shortestPath(g, entranceTiles("A"), entranceTiles("C"));
+    expect(path).not.toBeNull();
+    const onPath = new Set(path!.map(([x, y]) => y * g.w + x));
+    const used = narrowGaps(HARBOUR_STREET, 2, 4).filter((gap) => gap.some(([x, y]) => onPath.has(y * g.w + x)));
+    expect(used.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("countNarrowGaps counts each gap once", () => {
+    const rect = (x: number) => ({ x, y: 10, w: 2, h: 5 });
+    const synth = (xs: number[]) => ({ ...HARBOUR_STREET, obstacles: xs.map((x) => ({ name: "b", rect: rect(x) })) });
+    expect(countNarrowGaps(synth([10, 15]), 2, 4)).toBe(1);
+    expect(countNarrowGaps(synth([10, 15, 20]), 2, 4)).toBe(2);
+    expect(countNarrowGaps(synth([10, 19]), 2, 4)).toBe(0);
+    expect(countNarrowGaps(synth([10]), 2, 4)).toBe(0);
   });
 
   test("buildGrid paints only the platforms added", () => {
