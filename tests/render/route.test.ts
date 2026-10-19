@@ -6,6 +6,7 @@ import { PState } from "../../src/sim/people";
 import { APPROACH_MIN, LEAVE_MIN, type Service } from "../../src/sim/timetable";
 import { fieldFor } from "../../src/sim/walk";
 import { createWorld, step } from "../../src/sim/world";
+import { OX, OY } from "../sim/helpers";
 
 describe("routeOf", () => {
   it("follows the walking route step by step to a field target, then on to the goal", () => {
@@ -39,15 +40,15 @@ describe("routeOf", () => {
     const w = createWorld(5);
     const p = w.people;
     const i = p.alloc();
-    p.x[i] = 10.5;
-    p.y[i] = 57.5;
+    p.x[i] = OX + 10.5;
+    p.y[i] = OY + 57.5;
     p.state[i] = PState.Walking;
-    const spot = 58 * w.grid.w + 14;
+    const spot = (OY + 58) * w.grid.w + OX + 14;
     p.targetKey[i] = `spot:${spot}`;
     p.goalKey[i] = "platform:1";
     const r = routeOf(w, i);
-    expect(r.toTarget).toEqual([[10.5, 57.5], [14.5, 58.5]]);
-    expect(r.toGoal[0]).toEqual([14.5, 58.5]);
+    expect(r.toTarget).toEqual([[OX + 10.5, OY + 57.5], [OX + 14.5, OY + 58.5]]);
+    expect(r.toGoal[0]).toEqual([OX + 14.5, OY + 58.5]);
     const [ex, ey] = r.toGoal[r.toGoal.length - 1]!;
     expect(fieldFor(w, "platform:1")[Math.floor(ey) * w.grid.w + Math.floor(ex)]).toBe(0);
   });

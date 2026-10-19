@@ -1,4 +1,4 @@
-import { BenchScenario, BENCH_H, BENCH_W } from "./benchScenario";
+import { BenchScenario, BENCH_H, BENCH_ORIGIN, BENCH_W } from "./benchScenario";
 import { Camera } from "./render/camera";
 import { drawPeople } from "./render/drawPeople";
 import { MAX_STEPS_PER_FRAME, SIM_DT, TILE_PX } from "./sim/constants";
@@ -54,6 +54,7 @@ function resize(): void {
   canvas.style.width = `${window.innerWidth}px`;
   canvas.style.height = `${window.innerHeight}px`;
   cam.zoom = zoomParam > 0 ? zoomParam : Math.min(window.innerWidth / (BENCH_W * TILE_PX), window.innerHeight / (BENCH_H * TILE_PX));
+  [cam.x, cam.y] = BENCH_ORIGIN;
   layer.width = canvas.width;
   layer.height = canvas.height;
   const lc = layer.getContext("2d");
@@ -65,9 +66,10 @@ function resize(): void {
 }
 function drawWorld(c: CanvasRenderingContext2D): void {
   const [x0, y0] = cam.worldToScreen(0, 0);
+  const [fx, fy] = cam.worldToScreen(...BENCH_ORIGIN);
   const s = TILE_PX * cam.zoom;
   c.fillStyle = FLOOR;
-  c.fillRect(x0, y0, BENCH_W * s, BENCH_H * s);
+  c.fillRect(fx, fy, BENCH_W * s, BENCH_H * s);
   c.fillStyle = WALL;
   for (const r of sc.obstacles) c.fillRect(x0 + r.x * s, y0 + r.y * s, r.w * s, r.h * s);
   c.fillStyle = TRACK;

@@ -1,6 +1,7 @@
 // Dev only (index.html?debug=render): the renderer on a world with every piece in it, live, with
 // wheel zoom, drag to pan, click to select a person and a retail preview that follows the cursor
-// (Esc hides it, B brings it back). ?speed=1 (default 3), ?zoom=2&centre=18,56 to frame a close look.
+// (Esc hides it, B brings it back). ?speed=1 (default 3), ?zoom=2&centre=18,56 to frame a close look
+// (centre in the station's own coordinates).
 // Task 17 builds the real game page.
 import { previewPlacement } from "./sim/build";
 import { MAX_STEPS_PER_FRAME, SIM_DT } from "./sim/constants";
@@ -22,6 +23,8 @@ export function startDebugRender(canvas: HTMLCanvasElement): void {
   const speed = Number(params.get("speed") ?? 3);
   const w = buildDebugWorld(Number(params.get("seed") ?? 7));
   const r = new Renderer(canvas);
+  // The station's grounds, inside the city.
+  r.initialFrame = (cam, world) => void cam.frame(world.map.grounds, 2, 0, Infinity);
   const zoom = Number(params.get("zoom"));
   const centre = params.get("centre")?.split(",").map(Number);
   let placed = false;
@@ -136,12 +139,13 @@ export function startDebugRender(canvas: HTMLCanvasElement): void {
     }
     r.draw(w, ui);
     if (!placed) {
-      // The renderer fits the map on its first draw; ?zoom=2&centre=18,56 then frames a closer look.
+      // The renderer frames the station on its first draw; ?zoom=2&centre=18,56 then frames a closer look.
       placed = true;
       const cam = r.camera;
       if (zoom > 0) cam.zoomAt(cam.viewW / 2, cam.viewH / 2, zoom / cam.zoom);
       if (centre?.length === 2) {
-        const [cx, cy] = cam.worldToScreen(centre[0]!, centre[1]!);
+        const { x: ox, y: oy } = w.map.grounds;
+        const [cx, cy] = cam.worldToScreen(ox + centre[0]!, oy + centre[1]!);
         cam.pan(cam.viewW / 2 - cx, cam.viewH / 2 - cy);
       }
     }

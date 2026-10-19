@@ -3,6 +3,7 @@ import { MAX_PEOPLE } from "./constants";
 import type { Disruption } from "./disruptions";
 import { Ledger, type DayStats, type LedgerLine } from "./economy";
 import type { Facility } from "./facilities";
+import type { Grid, Rect } from "./grid";
 import type { GrowthState } from "./growth";
 import { HARBOUR_STREET } from "./maps/harbourStreet";
 import { restoreTurnstiles, saveTurnstiles, type TurnstileSave } from "./movement";
@@ -13,7 +14,7 @@ import { checkSave } from "./saveCheck";
 import { Timetable, type Service } from "./timetable";
 import { createWorld, type World } from "./world";
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 /** The only map so far; its layout is constant data, so a save names it rather than storing it. */
 const MAP_ID = "harbour-street";
 
@@ -42,6 +43,7 @@ interface SaveFile {
   ledger: { balance: number; today: Record<LedgerLine, number> };
   meter: { minutes: number[]; total: number[]; onTime: number[] };
   growth: GrowthState;
+  /** The station grounds' tiles, row by row: the rest of the city is constant and rebuilt on load. */
   grid: { version: number; tiles: string; zones: string; zoneOwner: string; dir: string };
   /** The ticket gates' cadence and queues. */
   turnstiles: TurnstileSave;
@@ -82,10 +84,10 @@ export function serialise(w: World): string {
     growth: w.growth,
     grid: {
       version: g.version,
-      tiles: encodeBytes(g.tiles),
-      zones: encodeBytes(g.zones),
-      zoneOwner: encodeBytes(g.zoneOwner),
-      dir: encodeBytes(g.dir),
+      tiles: encodeBytes(cut(g, g.tiles, w.map.grounds)),
+      zones: encodeBytes(cut(g, g.zones, w.map.grounds)),
+      zoneOwner: encodeBytes(cut(g, g.zoneOwner, w.map.grounds)),
+      dir: encodeBytes(cut(g, g.dir, w.map.grounds)),
     },
     turnstiles: saveTurnstiles(w.turnstiles, g),
     people: w.people.toSave(),
@@ -101,8 +103,20 @@ export function serialise(w: World): string {
   return JSON.stringify(save);
 }
 
-function restoreBytes(v: ArrayBufferView, b64: string, name: string): void {
-  if (decodeBytesInto(v, b64) !== v.byteLength) throw new Error(`Corrupt save: ${name}`);
+type TileArray = Uint8Array | Int32Array;
+
+/** The rect's part of a per-tile array, row by row. */
+function cut<T extends TileArray>(g: Grid, a: T, r: Rect): T {
+  const out = a.slice(0, r.w * r.h) as T;
+  for (let y = 0; y < r.h; y++) out.set(a.subarray((r.y + y) * g.w + r.x, (r.y + y) * g.w + r.x + r.w), y * r.w);
+  return out;
+}
+
+/** Writes a saved rect of a per-tile array back into place. */
+function restoreRect<T extends TileArray>(g: Grid, a: T, r: Rect, b64: string, name: string): void {
+  const part = a.slice(0, r.w * r.h) as T;
+  if (decodeBytesInto(part, b64) !== part.byteLength) throw new Error(`Corrupt save: ${name}`);
+  for (let y = 0; y < r.h; y++) a.set(part.subarray(y * r.w, (y + 1) * r.w), (r.y + y) * g.w + r.x);
 }
 
 /**
@@ -136,10 +150,11 @@ export function deserialise(json: string): World {
   w.growth = s.growth;
 
   const g = w.grid;
-  restoreBytes(g.tiles, s.grid.tiles, "grid.tiles");
-  restoreBytes(g.zones, s.grid.zones, "grid.zones");
-  restoreBytes(g.zoneOwner, s.grid.zoneOwner, "grid.zoneOwner");
-  restoreBytes(g.dir, s.grid.dir, "grid.dir");
+  const r = w.map.grounds;
+  restoreRect(g, g.tiles, r, s.grid.tiles, "grid.tiles");
+  restoreRect(g, g.zones, r, s.grid.zones, "grid.zones");
+  restoreRect(g, g.zoneOwner, r, s.grid.zoneOwner, "grid.zoneOwner");
+  restoreRect(g, g.dir, r, s.grid.dir, "grid.dir");
   g.version = s.grid.version;
   restoreTurnstiles(w.turnstiles, s.turnstiles);
 

@@ -8,7 +8,7 @@ import { computeField } from "../../src/sim/routeField";
 import { onTrainArrived, reachableEntrances, sampleSlack } from "../../src/sim/spawner";
 import { stepTrains } from "../../src/sim/trains";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { entranceTiles, openEveryGate, platformTiles, runMinutes, type XY } from "./helpers";
+import { OY, OX, entranceTiles, openEveryGate, platformTiles, runMinutes, type XY } from "./helpers";
 
 // Fields computed here from scratch, per grid and layout version, never through the world's cache.
 const fieldMemo = new WeakMap<Grid, Map<string, Float32Array>>();
@@ -95,7 +95,7 @@ test("spawn walks are measured on the layout as built at spawn", () => {
   s.alighting = 20;
   onTrainArrived(w, s); // warms the world's field cache on the open layout
   // A wall across the concourse leaves one gap at its east end: the way to Harbour Road gets longer.
-  for (let x = 6; x <= 14; x++) w.grid.setTile(x, 58, Tile.Wall);
+  for (let x = 6; x <= 14; x++) w.grid.setTile(OX + x, OY + 58, Tile.Wall);
   w.minute += 1;
   s.alighting = 120;
   onTrainArrived(w, s);
@@ -181,16 +181,16 @@ test("arriving passengers leave by an exit with an outcome; departing ones wait 
 
 test("only entrances with a route to a platform take departing passengers", () => {
   const w = createWorld(8);
-  // Quay Lane has no floor to it yet.
+  // The footbridge has no floor to it yet.
   expect(reachableEntrances(w).map((e) => e.id)).toEqual(["A", "B"]);
-  for (let y = 55; y < 58; y++) w.grid.setTile(1, y, Tile.Wall);
+  for (let y = 55; y < 58; y++) w.grid.setTile(OX + 1, OY + y, Tile.Wall);
   expect(reachableEntrances(w).map((e) => e.id)).toEqual(["A"]);
 });
 
 test("no spawns from an unreachable entrance", () => {
   const w = createWorld(8);
-  // Wall the strip of floor leading in from Market Place.
-  for (let y = 55; y < 58; y++) w.grid.setTile(1, y, Tile.Wall);
+  // Wall the strip of floor leading in from Market Street.
+  for (let y = 55; y < 58; y++) w.grid.setTile(OX + 1, OY + y, Tile.Wall);
   const b = entranceTiles("B");
   let spawned = 0;
   const until = w.minute + 60;
@@ -221,8 +221,8 @@ test("people are only put on, and sent to, walkable platform tiles", () => {
   const walkers: number[] = [];
   for (let n = 0; n < 30; n++) {
     const i = w.people.alloc();
-    w.people.x[i] = 9.5;
-    w.people.y[i] = 53.5;
+    w.people.x[i] = OX + 9.5;
+    w.people.y[i] = OY + 53.5;
     w.people.state[i] = PState.Walking;
     w.people.goalKey[i] = "platform:1";
     w.people.targetKey[i] = "platform:1";
@@ -241,8 +241,8 @@ test("a passenger who misses the last service heads for an exit, counted once", 
   const s = w.timetable.upcoming(1, w.minute)[0]!;
   for (const [id, other] of w.timetable.services) if (other.platformId === 1 && other.departAt > s.departAt) w.timetable.services.delete(id);
   const i = w.people.alloc();
-  w.people.x[i] = 10.5;
-  w.people.y[i] = 70.5;
+  w.people.x[i] = OX + 10.5;
+  w.people.y[i] = OY + 70.5;
   w.people.state[i] = PState.Walking;
   w.people.journey[i] = Journey.Departing;
   w.people.goalKey[i] = "platform:1";

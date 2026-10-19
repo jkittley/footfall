@@ -9,10 +9,10 @@ import { Rng } from "../../src/sim/rng";
 import { CrowdGrid } from "../../src/sim/crowd";
 import { FieldCache, walkMinutes } from "../../src/sim/routeField";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { openEveryGate, openFloor, runMinutes } from "./helpers";
+import { OX, OY, at, openEveryGate, openFloor, runMinutes } from "./helpers";
 
 // A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
-const ISLAND: Rect = { x: 60, y: 30, w: 20, h: 20 };
+const ISLAND: Rect = at(60, 30, 20, 20);
 
 function islandWorld(): World {
   const w = createWorld(1);
@@ -31,8 +31,8 @@ function letTo(f: Facility, tenant: Tenant): Facility {
 function person(w: World, x: number, y: number, slack: number, state = PState.Walking): number {
   const p = w.people;
   const i = p.alloc();
-  p.x[i] = x + 0.5;
-  p.y[i] = y + 0.5;
+  p.x[i] = OX + x + 0.5;
+  p.y[i] = OY + y + 0.5;
   p.state[i] = state;
   p.goalKey[i] = "exit:A";
   p.targetKey[i] = state === PState.Walking ? "exit:A" : "";
@@ -54,7 +54,7 @@ function tileOf(w: World, i: number): number {
 
 test("a hungry person with time to spare finds a visible food unit and eats", () => {
   const w = islandWorld();
-  const f = letTo(createFacility(w, FacilityKind.Retail, { x: 70, y: 40, w: 2, h: 2 }), Tenant.FoodDrink);
+  const f = letTo(createFacility(w, FacilityKind.Retail, at(70, 40, 2, 2)), Tenant.FoodDrink);
   const pid = person(w, 65, 40, 60, PState.Waiting);
   setNeed(w, pid, Need.Hunger, 1);
   const until = w.minute + 30;
@@ -68,8 +68,8 @@ test("a hungry person with time to spare finds a visible food unit and eats", ()
 test("a person does not know about a toilet out of sight, but a sign teaches it", () => {
   const w = islandWorld();
   // A wall down the island with a gap at the bottom: the toilet is a long walk round.
-  for (let y = ISLAND.y; y < ISLAND.y + ISLAND.h - 2; y++) w.grid.setTile(70, y, Tile.Wall);
-  const toilet = createFacility(w, FacilityKind.Toilet, { x: 74, y: 31, w: 1, h: 2 });
+  for (let y = ISLAND.y; y < ISLAND.y + ISLAND.h - 2; y++) w.grid.setTile(OX + 70, y, Tile.Wall);
+  const toilet = createFacility(w, FacilityKind.Toilet, at(74, 31, 1, 2));
   const pid = person(w, 66, 31, 600, PState.Waiting);
   setNeed(w, pid, Need.Toilet, 1);
   const field = w.fields.get(`facility:${toilet.id}`, () => fieldTargets(w, `facility:${toilet.id}`));
@@ -79,7 +79,7 @@ test("a person does not know about a toilet out of sight, but a sign teaches it"
   expect(w.people.errand[pid]).toBe(Need.Toilet);
   expect(w.people.known[pid * NEED_COUNT + Need.Toilet]).toBe(-1);
 
-  const sign = addSign(w, w.grid.idx(65, 31), "toilets");
+  const sign = addSign(w, w.grid.idx(OX + 65, OY + 31), "toilets");
   expect(sign.pointsTo).toBe(toilet.id);
   runMinutes(w, 1.5);
   expect(w.people.known[pid * NEED_COUNT + Need.Toilet]).toBe(toilet.id);
@@ -89,7 +89,7 @@ test("a person does not know about a toilet out of sight, but a sign teaches it"
 test("a person with almost no time left drops their errand", () => {
   const w = createWorld(1);
   // Built on Harbour Road's corridor floor; any unit will do, it never gets reached.
-  const f = letTo(createFacility(w, FacilityKind.Retail, { x: 12, y: 64, w: 1, h: 2 }), Tenant.FoodDrink);
+  const f = letTo(createFacility(w, FacilityKind.Retail, at(12, 64, 1, 2)), Tenant.FoodDrink);
   const p = w.people;
   const pid = person(w, 10, 70, 0);
   const walk = walkMinutes(
@@ -118,7 +118,7 @@ test("a desperate person with no toilet slows down", () => {
   runMinutes(w, 2);
   expect(w.people.speedMul[pid]).toBeCloseTo(0.7);
   // A toilet opens in sight: once they have been, they are back to full speed.
-  createFacility(w, FacilityKind.Toilet, { x: 70, y: 40, w: 1, h: 2 });
+  createFacility(w, FacilityKind.Toilet, at(70, 40, 1, 2));
   const until = w.minute + 30;
   while (w.minute < until && need(w, pid, Need.Toilet) !== 0) step(w, SIM_DT);
   expect(need(w, pid, Need.Toilet)).toBe(0);
@@ -152,7 +152,7 @@ test("a desperate walker drifts off the straight route but still gets there", ()
 
 test("a unit heading for that no longer meets the errand is forgotten, errand kept", () => {
   const w = islandWorld();
-  const f = letTo(createFacility(w, FacilityKind.Retail, { x: 70, y: 40, w: 2, h: 2 }), Tenant.FoodDrink);
+  const f = letTo(createFacility(w, FacilityKind.Retail, at(70, 40, 2, 2)), Tenant.FoodDrink);
   const p = w.people;
   const pid = person(w, 62, 32, 600);
   setNeed(w, pid, Need.Browse, 1);
@@ -169,11 +169,11 @@ test("a unit heading for that no longer meets the errand is forgotten, errand ke
 
 test("arriving at a full queue drops the errand, need unmet", () => {
   const w = islandWorld();
-  const f = letTo(createFacility(w, FacilityKind.Retail, { x: 70, y: 40, w: 2, h: 2 }), Tenant.FoodDrink);
+  const f = letTo(createFacility(w, FacilityKind.Retail, at(70, 40, 2, 2)), Tenant.FoodDrink);
   const p = w.people;
   for (let k = 0; k < TENANTS[Tenant.FoodDrink].maxQueue; k++) expect(tryJoin(w, f, person(w, 62 + k, 46, 600))).toBe(true);
   const last = f.queueTiles[f.queueTiles.length - 1]!;
-  const pid = person(w, last % w.grid.w, Math.floor(last / w.grid.w), 600);
+  const pid = person(w, (last % w.grid.w) - OX, Math.floor(last / w.grid.w) - OY, 600);
   setNeed(w, pid, Need.Hunger, 1);
   p.errand[pid] = Need.Hunger;
   p.errandFacility[pid] = f.id;
@@ -189,19 +189,19 @@ test("arriving at a full queue drops the errand, need unmet", () => {
 
 test("signs point to the nearest matching open facility, and follow changes", () => {
   const w = islandWorld();
-  const far = letTo(createFacility(w, FacilityKind.Retail, { x: 76, y: 44, w: 2, h: 2 }), Tenant.Newsagent);
-  const shops = addSign(w, w.grid.idx(62, 32), "shops");
-  const seating = addSign(w, w.grid.idx(62, 33), "seating");
+  const far = letTo(createFacility(w, FacilityKind.Retail, at(76, 44, 2, 2)), Tenant.Newsagent);
+  const shops = addSign(w, w.grid.idx(OX + 62, OY + 32), "shops");
+  const seating = addSign(w, w.grid.idx(OX + 62, OY + 33), "seating");
   expect(shops.pointsTo).toBe(far.id);
   expect(seating.pointsTo).toBe(-1);
   // A nearer unit is to let: the sign still points past it.
-  const near = createFacility(w, FacilityKind.Retail, { x: 64, y: 34, w: 2, h: 2 });
+  const near = createFacility(w, FacilityKind.Retail, at(64, 34, 2, 2));
   expect(shops.pointsTo).toBe(far.id);
   // Its tenant moves in: now it is the nearest.
   runMinutes(w, 41);
   expect(near.tenant).not.toBe(Tenant.None);
   expect(shops.pointsTo).toBe(near.id);
-  const seat = createFacility(w, FacilityKind.Seating, { x: 66, y: 44, w: 2, h: 1 });
+  const seat = createFacility(w, FacilityKind.Seating, at(66, 44, 2, 1));
   expect(seating.pointsTo).toBe(seat.id);
   w.facilities.delete(far.id);
   w.facilities.delete(near.id);
@@ -211,7 +211,7 @@ test("signs point to the nearest matching open facility, and follow changes", ()
 
 test("a known facility that has gone is forgotten on use", () => {
   const w = islandWorld();
-  const toilet = createFacility(w, FacilityKind.Toilet, { x: 70, y: 40, w: 1, h: 2 });
+  const toilet = createFacility(w, FacilityKind.Toilet, at(70, 40, 1, 2));
   const pid = person(w, 62, 32, 600, PState.Waiting);
   setNeed(w, pid, Need.Toilet, 1);
   w.people.known[pid * NEED_COUNT + Need.Toilet] = toilet.id;
@@ -241,11 +241,11 @@ test("errands never make a fair-deadline person miss on an empty map", () => {
   // All 5 gates, so the island's foot is not the bottleneck under test.
   openEveryGate(w);
   // Floor east of the concourse for the units, joined to it along x = 16.
-  for (let y = 56; y < 63; y++) for (let x = 16; x < 30; x++) w.grid.setTile(x, y, Tile.Floor);
-  letTo(createFacility(w, FacilityKind.Retail, { x: 20, y: 60, w: 2, h: 2 }), Tenant.FoodDrink);
-  const toilet = createFacility(w, FacilityKind.Toilet, { x: 25, y: 60, w: 2, h: 2 });
-  addSign(w, w.grid.idx(10, 56), "toilets");
-  addSign(w, w.grid.idx(11, 64), "shops");
+  for (let y = 56; y < 63; y++) for (let x = 16; x < 30; x++) w.grid.setTile(OX + x, OY + y, Tile.Floor);
+  letTo(createFacility(w, FacilityKind.Retail, at(20, 60, 2, 2)), Tenant.FoodDrink);
+  const toilet = createFacility(w, FacilityKind.Toilet, at(25, 60, 2, 2));
+  addSign(w, w.grid.idx(OX + 10, OY + 56), "toilets");
+  addSign(w, w.grid.idx(OX + 11, OY + 64), "shops");
   let toiletUsed = false;
   const until = w.minute + 6 * 60;
   while (w.minute < until) {
@@ -279,7 +279,7 @@ function waitingPassenger(w: World, after: number): { pid: number; serviceId: nu
 
 test("a waiting passenger goes for food, comes back and boards on time", () => {
   const w = createWorld(2);
-  const f = letTo(createFacility(w, FacilityKind.Retail, { x: 14, y: 57, w: 2, h: 2 }), Tenant.FoodDrink);
+  const f = letTo(createFacility(w, FacilityKind.Retail, at(14, 57, 2, 2)), Tenant.FoodDrink);
   const { pid } = waitingPassenger(w, w.minute + 40);
   const field = w.fields.get(`facility:${f.id}`, () => fieldTargets(w, `facility:${f.id}`));
   expect(field[tileOf(w, pid)]!).toBeLessThanOrEqual(8);
@@ -300,7 +300,7 @@ test("a waiting passenger goes for food, comes back and boards on time", () => {
 
 test("nobody starts an errand while their train is in", () => {
   const w = createWorld(2);
-  letTo(createFacility(w, FacilityKind.Retail, { x: 14, y: 57, w: 2, h: 2 }), Tenant.FoodDrink);
+  letTo(createFacility(w, FacilityKind.Retail, at(14, 57, 2, 2)), Tenant.FoodDrink);
   const s = w.timetable.upcoming(1, w.minute)[0]!;
   // Moments after it pulls in, with time still to spare on paper before it leaves.
   w.minute = s.arriveAt + 0.01;

@@ -7,7 +7,15 @@ import { Dir, type Rect } from "../sim/grid";
 import { addPlatform, deactivatePlatform } from "../sim/growth";
 import { refreshSigns } from "../sim/needs";
 import { PState } from "../sim/people";
+import { CITY } from "../sim/maps/city";
 import { createWorld, step, type World } from "../sim/world";
+
+const [OX, OY] = CITY.station.origin;
+
+/** A rect in the station's own coordinates, placed in the city. */
+function at(x: number, y: number, w: number, h: number): Rect {
+  return { x: OX + x, y: OY + y, w, h };
+}
 
 function stepMinutes(w: World, minutes: number): void {
   const steps = Math.ceil(minutes / (SIM_DT * GAME_MIN_PER_REAL_SEC));
@@ -37,27 +45,27 @@ export function buildDebugWorld(seed = 7): World {
     addPlatform(w, id);
     stepMinutes(w, 5);
   }
-  build(w, "floor", { x: 16, y: 56, w: 12, h: 4 });
-  build(w, "floor", { x: 14, y: 60, w: 14, h: 2 });
-  build(w, "retail", { x: 20, y: 60, w: 3, h: 2 });
-  build(w, "toilet", { x: 26, y: 60, w: 2, h: 2 });
-  build(w, "seating", { x: 15, y: 61, w: 4, h: 1 });
-  build(w, "sign", { x: 7, y: 58, w: 1, h: 1 }, { signKind: "toilets" });
-  build(w, "sign", { x: 13, y: 56, w: 1, h: 1 }, { signKind: "shops" });
-  build(w, "travelator", { x: 10, y: 63, w: 1, h: 6 }, { dir: Dir.N });
-  build(w, "wall", { x: 18, y: 57, w: 3, h: 1 });
-  build(w, "rail", { x: 22, y: 58, w: 4, h: 1 });
+  build(w, "floor", at(16, 56, 12, 4));
+  build(w, "floor", at(14, 60, 14, 2));
+  build(w, "retail", at(20, 60, 3, 2));
+  build(w, "toilet", at(26, 60, 2, 2));
+  build(w, "seating", at(15, 61, 4, 1));
+  build(w, "sign", at(7, 58, 1, 1), { signKind: "toilets" });
+  build(w, "sign", at(13, 56, 1, 1), { signKind: "shops" });
+  build(w, "travelator", at(10, 63, 1, 6), { dir: Dir.N });
+  build(w, "wall", at(18, 57, 3, 1));
+  build(w, "rail", at(22, 58, 4, 1));
 
-  const shop = facilityAt(w, 20, 60);
+  const shop = facilityAt(w, OX + 20, OY + 60);
   shop.tenant = Tenant.FoodDrink;
   shop.tenantAt = -1;
   refreshSigns(w);
   stepMinutes(w, 25);
-  build(w, "retail", { x: 24, y: 60, w: 2, h: 2 });
+  build(w, "retail", at(24, 60, 2, 2));
   stepMinutes(w, 5);
 
   queueUp(w, shop, 5);
-  standAt(w, { x: 8, y: 54, w: 4, h: 2 }, 40);
+  standAt(w, at(8, 54, 4, 2), 40);
   deactivatePlatform(w, 5);
   startDisruption(w, [2], 120);
   w.events.length = 0;

@@ -1,3 +1,4 @@
+import { walkArea } from "../sim/maps/city";
 import type { World } from "../sim/world";
 import { Camera } from "./camera";
 import { drawCrowding, drawUi, type UiOverlayState } from "./drawOverlays";
@@ -105,7 +106,7 @@ export class Renderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawTrains(ctx, w, v);
     drawPlanDynamic(ctx, w, v);
-    this.jam.update(w.crowd.counts, w.grid.w, w.grid.h, w.minute);
+    this.jam.update(w.crowd.counts, w.grid.w, w.grid.h, w.minute, walkArea());
     drawCrowding(ctx, this.jam, v, t0);
     drawPeople(ctx, cam, w.people, dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

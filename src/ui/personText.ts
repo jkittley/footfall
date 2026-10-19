@@ -28,7 +28,7 @@ export interface GoalFacts {
   deadline: number;
 }
 
-/** "Catch the 08:51 to Ashby, Platform 4" or "Leave by Quay Lane, going to work by 09:10". */
+/** "Catch the 08:51 to Ashby, Platform 4" or "Leave by Footbridge, going to work by 09:10". */
 export function goalLine(g: GoalFacts): string {
   if (g.exitName !== null) return `Leave by ${g.exitName}, ${GOING[g.destLabel]} ${clockTime(g.deadline)}`;
   if (g.service) return `Catch the ${clockTime(g.service.departAt)} to ${g.service.destination}, Platform ${g.service.platformId}`;

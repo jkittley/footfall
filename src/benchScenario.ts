@@ -5,6 +5,7 @@ import { FieldCache } from "./sim/routeField";
 import { createTurnstiles, stepMovement } from "./sim/movement";
 import { Rng } from "./sim/rng";
 import { SIM_DT } from "./sim/constants";
+import { CITY } from "./sim/maps/city";
 
 export const BENCH_W = 200;
 export const BENCH_H = 120;
@@ -12,12 +13,19 @@ export const BENCH_PEOPLE = 5000;
 const OBSTACLES = 60;
 const TARGET_KEYS = ["t0", "t1", "t2", "t3"];
 
-/** Seeded, deterministic 200x120 floor with obstacles, four target areas and walkers. */
+/** Where the floor sits in the city-sized grid: the station's corner, so the grid costs what the game's does. */
+export const BENCH_ORIGIN: readonly [number, number] = CITY.station.origin;
+
+/**
+ * Seeded, deterministic 200x120 floor with obstacles, four target areas and walkers, inside a
+ * grid the size of the city (everything else locked), so per-step work that grows with the grid
+ * shows up here. Rects and tiles are in grid coordinates.
+ */
 export class BenchScenario {
-  readonly grid = new Grid(BENCH_W, BENCH_H);
-  readonly crowd = new CrowdGrid(BENCH_W, BENCH_H);
+  readonly grid = new Grid(CITY.w, CITY.h);
+  readonly crowd = new CrowdGrid(CITY.w, CITY.h);
   readonly people = new PeopleStore(BENCH_PEOPLE);
-  readonly turnstiles = createTurnstiles(BENCH_W * BENCH_H, BENCH_PEOPLE);
+  readonly turnstiles = createTurnstiles(CITY.w * CITY.h, BENCH_PEOPLE);
   readonly fields = new FieldCache(this.grid);
   readonly obstacles: Rect[] = [];
   readonly targetAreas: Rect[] = [];
@@ -27,26 +35,28 @@ export class BenchScenario {
   constructor(seed = 1) {
     this.rng = new Rng(seed);
     const { grid, rng } = this;
-    for (let y = 0; y < BENCH_H; y++) for (let x = 0; x < BENCH_W; x++) grid.tiles[y * BENCH_W + x] = Tile.Floor;
+    const [ox, oy] = BENCH_ORIGIN;
+    grid.tiles.fill(Tile.Locked);
+    for (let y = oy; y < oy + BENCH_H; y++) for (let x = ox; x < ox + BENCH_W; x++) grid.tiles[y * grid.w + x] = Tile.Floor;
     const corners: [number, number][] = [
-      [BENCH_W / 4, BENCH_H / 4],
-      [(3 * BENCH_W) / 4, BENCH_H / 4],
-      [BENCH_W / 4, (3 * BENCH_H) / 4],
-      [(3 * BENCH_W) / 4, (3 * BENCH_H) / 4],
+      [ox + BENCH_W / 4, oy + BENCH_H / 4],
+      [ox + (3 * BENCH_W) / 4, oy + BENCH_H / 4],
+      [ox + BENCH_W / 4, oy + (3 * BENCH_H) / 4],
+      [ox + (3 * BENCH_W) / 4, oy + (3 * BENCH_H) / 4],
     ];
     TARGET_KEYS.forEach((key, k) => {
       const [cx, cy] = corners[k]!;
       const area = { x: cx - 3, y: cy - 3, w: 6, h: 6 };
       this.targetAreas.push(area);
       const tiles: number[] = [];
-      for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) tiles.push(y * BENCH_W + x);
+      for (let y = area.y; y < area.y + area.h; y++) for (let x = area.x; x < area.x + area.w; x++) tiles.push(y * grid.w + x);
       this.targets.set(key, tiles);
     });
     while (this.obstacles.length < OBSTACLES) {
-      const r = { x: rng.int(3, BENCH_W - 14), y: rng.int(3, BENCH_H - 14), w: rng.int(2, 10), h: rng.int(2, 10) };
+      const r = { x: ox + rng.int(3, BENCH_W - 14), y: oy + rng.int(3, BENCH_H - 14), w: rng.int(2, 10), h: rng.int(2, 10) };
       if (this.targetAreas.some((a) => overlaps(r, a, 2))) continue;
       this.obstacles.push(r);
-      for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) grid.tiles[y * BENCH_W + x] = Tile.Obstacle;
+      for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) grid.tiles[y * grid.w + x] = Tile.Obstacle;
     }
     for (let n = 0; n < BENCH_PEOPLE; n++) {
       const i = this.people.alloc();
@@ -62,6 +72,7 @@ export class BenchScenario {
   /** Puts walker `i` on a random edge tile (anywhere, when `anywhere`) heading for a random target. */
   private respawn(i: number, anywhere = false): void {
     const { rng, people } = this;
+    const [ox, oy] = BENCH_ORIGIN;
     const key = rng.pick(TARGET_KEYS);
     let x: number;
     let y: number;
@@ -76,9 +87,9 @@ export class BenchScenario {
         x = rng.int(0, BENCH_W - 1);
         y = rng.next() < 0.5 ? 0 : BENCH_H - 1;
       }
-    } while (!this.grid.isWalkable(x, y));
-    people.x[i] = x + rng.next();
-    people.y[i] = y + rng.next();
+    } while (!this.grid.isWalkable(ox + x, oy + y));
+    people.x[i] = ox + x + rng.next();
+    people.y[i] = oy + y + rng.next();
     people.targetKey[i] = key;
     people.goalKey[i] = key;
   }

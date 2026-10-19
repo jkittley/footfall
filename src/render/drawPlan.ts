@@ -1,6 +1,8 @@
 import { FacilityKind, type Facility } from "../sim/facilities";
 import { Dir, Tile, Zone, type Grid, type Rect } from "../sim/grid";
+import { walkArea } from "../sim/maps/city";
 import type { World } from "../sim/world";
+import { drawCity, drawCityLabels, drawSubway } from "./drawCity";
 import { futurePairLabel, platformLabelVariants, retailLabel, type Run } from "./labels";
 import { CIRCLE, DOT, FLOOR, GROUND, INK, INK_2, SQUARE, TRACK, WALL } from "./palette";
 import { clamp, drawRuns, runsWidth, uiFont, wrapWords } from "./text";
@@ -43,18 +45,34 @@ export function drawStatic(ctx: CanvasRenderingContext2D, w: World, v: View): vo
   ctx.fillStyle = GROUND;
   ctx.fillRect(0, 0, v.cssW, v.cssH);
   drawDots(ctx, v);
+  drawCity(ctx, v, w.map);
   drawObstacles(ctx, w, v);
-  drawFloor(ctx, w.grid, v);
-  drawTrack(ctx, w.grid, v);
-  drawPlatformEdges(ctx, w.grid, v);
+  // Station tiles exist only in the walk area, so the per-tile passes look nowhere else.
+  const sv = clipView(v, walkArea());
+  drawFloor(ctx, w.grid, sv);
+  drawTrack(ctx, w.grid, sv);
+  drawPlatformEdges(ctx, w.grid, sv);
   drawFutureIslands(ctx, w, v);
   drawFacilityBodies(ctx, w, v);
-  drawTravelators(ctx, w.grid, v);
-  drawEdges(ctx, w.grid, v);
-  drawWallTiles(ctx, w.grid, v);
-  drawRails(ctx, w.grid, v);
-  drawGates(ctx, w.grid, v);
+  drawTravelators(ctx, w.grid, sv);
+  drawEdges(ctx, w.grid, sv);
+  drawWallTiles(ctx, w.grid, sv);
+  drawRails(ctx, w.grid, sv);
+  drawGates(ctx, w.grid, sv);
+  drawSubway(ctx, v);
+  drawCityLabels(ctx, v);
   drawEntrances(ctx, w, v);
+}
+
+/** The view with its tile range cut down to `r` (and a tile round it, for edges). */
+function clipView(v: View, r: Rect): View {
+  return {
+    ...v,
+    x0: Math.max(v.x0, r.x - 1),
+    y0: Math.max(v.y0, r.y - 1),
+    x1: Math.max(Math.max(v.x0, r.x - 1), Math.min(v.x1, r.x + r.w + 1)),
+    y1: Math.max(Math.max(v.y0, r.y - 1), Math.min(v.y1, r.y + r.h + 1)),
+  };
 }
 
 function drawDots(ctx: CanvasRenderingContext2D, v: View): void {
@@ -577,9 +595,8 @@ function drawGates(ctx: CanvasRenderingContext2D, g: Grid, v: View): void {
   ctx.fill(posts);
 }
 
-/** A pill outside each entrance: "Entrance A · Harbour Road". */
+/** A pill outside each entrance, on the side it faces: "Entrance A · Harbour Road". */
 function drawEntrances(ctx: CanvasRenderingContext2D, w: World, v: View): void {
-  const g = w.grid;
   const size = 12;
   const h = 26;
   for (const e of w.map.entrances) {
@@ -588,15 +605,14 @@ function drawEntrances(ctx: CanvasRenderingContext2D, w: World, v: View): void {
     const tw = runsWidth(ctx, runs, size) + 24;
     let cx: number;
     let cy: number;
-    if (r.x === 0 || r.x + r.w === g.w) {
-      // On a side of the map: just outside it, level with the opening.
-      cx = r.x === 0 ? sx(v, 0) - 0.6 * v.s - tw / 2 : sx(v, g.w) + 0.6 * v.s + tw / 2;
+    const gap = 0.6 * v.s;
+    if (e.faces === "W" || e.faces === "E") {
+      // Beside the opening, level with it.
+      cx = e.faces === "W" ? sx(v, r.x) - gap - tw / 2 : sx(v, r.x + r.w) + gap + tw / 2;
       cy = sy(v, r.y + r.h / 2);
     } else {
-      const outBelow = sideOf(g, r.x, r.y + r.h) !== Side.In;
-      const gap = 0.6 * v.s + h / 2;
       cx = sx(v, r.x + r.w / 2);
-      cy = outBelow ? sy(v, r.y + r.h) + gap : sy(v, r.y) - gap;
+      cy = e.faces === "S" ? sy(v, r.y + r.h) + gap + h / 2 : sy(v, r.y) - gap - h / 2;
     }
     if (cx + tw / 2 < 0 || cx - tw / 2 > v.cssW || cy + h < 0 || cy - h > v.cssH) continue;
     roundRect(ctx, cx - tw / 2, cy - h / 2, tw, h, h / 2);
@@ -642,11 +658,16 @@ function drawClosedPlatforms(ctx: CanvasRenderingContext2D, w: World, v: View): 
   ctx.globalAlpha = 1;
 }
 
-/** Each platform's label, reading up the platform from its concourse end, after a marker of its line. */
+/**
+ * Each platform's label, reading up its edge column (beside its track, where nothing is built, so
+ * shops and seating on the island's centre never sit under it) from the concourse end, after a
+ * marker of its line.
+ */
 function drawPlatformLabels(ctx: CanvasRenderingContext2D, w: World, v: View): void {
   const size = clamp(13 * v.cam.zoom, 10, 15);
   for (const slot of w.map.slots.slice(0, w.platformsAdded)) {
-    const r = slot.platform;
+    const p = slot.platform;
+    const r = { x: slot.side === "left" ? p.x : p.x + p.w - 1, y: p.y, w: 1, h: p.h };
     if (!rectInView(v, r.x, r.y, r.w, r.h)) continue;
     const [x, y, ww, hh] = rectPx(v, r);
     if (ww < size + 2) continue;

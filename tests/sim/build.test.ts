@@ -5,7 +5,7 @@ import { FacilityKind, tryJoin, Tenant } from "../../src/sim/facilities";
 import { Dir, Grid, Tile, Zone, type Rect } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
 import { createWorld, fieldTargets, waitingSpots, type World } from "../../src/sim/world";
-import { entranceTiles, platformTiles, reachable, tilesOf, type XY } from "./helpers";
+import { OX, OY, st, at, entranceTiles, platformTiles, reachable, tilesOf, type XY } from "./helpers";
 
 // Platform 1's foot row at the top of its apron: its only way down to the concourse.
 function wallAcrossPlatformOneFoot(w: World): Rect {
@@ -16,8 +16,8 @@ function wallAcrossPlatformOneFoot(w: World): Rect {
 function person(w: World, x: number, y: number): number {
   const p = w.people;
   const i = p.alloc();
-  p.x[i] = x + 0.5;
-  p.y[i] = y + 0.5;
+  p.x[i] = OX + x + 0.5;
+  p.y[i] = OY + y + 0.5;
   p.state[i] = PState.Walking;
   p.goalKey[i] = "platform:1";
   p.targetKey[i] = "platform:1";
@@ -33,9 +33,9 @@ const ALL_ENTRANCES = (): XY[] => [...entranceTiles("A"), ...entranceTiles("B"),
 
 test("floor preview counts only ground tiles and prices them", () => {
   const w = createWorld(1);
-  // Two of these tiles are St Mary's Church; (8, 61) sits next to the floor column at x 9.
-  const rect = { x: 5, y: 61, w: 4, h: 2 };
-  expect(tilesOf(rect).filter(([x, y]) => w.grid.tile(x, y) === Tile.Obstacle)).toHaveLength(2);
+  // The bottom two of these tiles are Harbour Road; (13, 79) sits beside Entrance A.
+  const rect = at(13, 79, 2, 4);
+  expect(tilesOf(rect).filter(([x, y]) => w.grid.tile(x, y) === Tile.Road)).toHaveLength(2);
   const p = previewPlacement(w, "floor", rect);
   expect(p.tiles).toHaveLength(6);
   expect(p.blocked).toHaveLength(2);
@@ -46,7 +46,7 @@ test("floor preview counts only ground tiles and prices them", () => {
 
 test("floor must join existing floor", () => {
   const w = createWorld(1);
-  const p = previewPlacement(w, "floor", { x: 20, y: 58, w: 2, h: 2 });
+  const p = previewPlacement(w, "floor", at(20, 58, 2, 2));
   expect(p.valid).toBe(false);
   expect(p.reason).toBe("Must join existing floor");
 });
@@ -61,40 +61,40 @@ test("refuses a wall that cuts off a platform", () => {
   expect(applyPlacement(w, p)).toBe(false);
   expect(w.ledger.balance).toBe(before);
   expect(w.grid.version).toBe(v);
-  expect(w.grid.tile(9, 54)).toBe(Tile.Floor);
+  expect(w.grid.tile(...st(9, 54))).toBe(Tile.Floor);
 });
 
 test("moves people out of newly blocked tiles", () => {
   const w = createWorld(1);
   // A walkable pocket diagonally off the concourse corner, cut off from everything: the nearest
   // walkable tile to (15, 59) once the unit covers it, but not one anyone could walk out of.
-  w.grid.setTile(16, 60, Tile.Floor);
+  w.grid.setTile(...st(16, 60), Tile.Floor);
   const i = person(w, 15, 59);
-  const p = previewPlacement(w, "retail", { x: 14, y: 58, w: 2, h: 2 });
+  const p = previewPlacement(w, "retail", at(14, 58, 2, 2));
   expect(p.valid).toBe(true);
   expect(applyPlacement(w, p)).toBe(true);
-  expect(w.grid.zone(15, 59)).toBe(Zone.Retail);
+  expect(w.grid.zone(...st(15, 59))).toBe(Zone.Retail);
   const [x, y] = tileAt(w, i);
   expect(w.grid.isWalkable(x, y)).toBe(true);
-  expect([x, y]).not.toEqual([16, 60]);
+  expect([x, y]).not.toEqual(st(16, 60));
   expect(reachable(w.grid, ALL_ENTRANCES(), [[x, y]])).toBe(true);
-  expect(Math.max(Math.abs(x - 15), Math.abs(y - 59))).toBe(2);
+  expect(Math.max(Math.abs(x - (OX + 15)), Math.abs(y - (OY + 59)))).toBe(2);
 });
 
 test("retail too small and off-floor are refused with reasons", () => {
   const w = createWorld(1);
-  const small = previewPlacement(w, "retail", { x: 12, y: 57, w: 1, h: 2 });
+  const small = previewPlacement(w, "retail", at(12, 57, 1, 2));
   expect(small.valid).toBe(false);
   expect(small.reason).toBe("Too small");
-  const ground = previewPlacement(w, "retail", { x: 20, y: 58, w: 2, h: 2 });
+  const ground = previewPlacement(w, "retail", at(20, 58, 2, 2));
   expect(ground.valid).toBe(false);
   expect(ground.reason).toBe("Must be on plain floor");
 });
 
 test("a cost exactly equal to the balance is allowed", () => {
   const w = createWorld(1);
-  w.ledger.balance = 600;
-  const p = previewPlacement(w, "floor", { x: 5, y: 61, w: 4, h: 2 });
+  w.ledger.balance = 800;
+  const p = previewPlacement(w, "floor", at(5, 61, 4, 2));
   expect(p.valid).toBe(true);
   expect(applyPlacement(w, p)).toBe(true);
   expect(w.ledger.balance).toBe(0);
@@ -103,15 +103,15 @@ test("a cost exactly equal to the balance is allowed", () => {
 test("a unit with no walkable tile beside it is refused", () => {
   const w = createWorld(1);
   // An island of floor walled in by ground on every side.
-  for (const [x, y] of tilesOf({ x: 20, y: 58, w: 2, h: 2 })) w.grid.setTile(x, y, Tile.Floor);
-  expect(previewPlacement(w, "retail", { x: 20, y: 58, w: 2, h: 2 }).reason).toBe("Needs a floor tile beside it");
+  for (const [x, y] of tilesOf(at(20, 58, 2, 2))) w.grid.setTile(x, y, Tile.Floor);
+  expect(previewPlacement(w, "retail", at(20, 58, 2, 2)).reason).toBe("Needs a floor tile beside it");
 });
 
 test("nothing to remove and a blocked entrance are refused with reasons", () => {
   const w = createWorld(1);
-  expect(previewPlacement(w, "remove", { x: 20, y: 58, w: 2, h: 2 }).reason).toBe("Nothing to remove here");
-  // The starting floor between Market Place and the concourse is Entrance B's only way in.
-  const p = previewPlacement(w, "remove", { x: 1, y: 55, w: 5, h: 3 });
+  expect(previewPlacement(w, "remove", at(20, 58, 2, 2)).reason).toBe("Nothing to remove here");
+  // The starting floor between Market Street and the concourse is Entrance B's only way in.
+  const p = previewPlacement(w, "remove", at(1, 55, 5, 3));
   expect(p.valid).toBe(false);
   expect(p.reason).toBe("Would block Entrance B");
 });
@@ -119,49 +119,49 @@ test("nothing to remove and a blocked entrance are refused with reasons", () => 
 test("separate entrance-to-platform regions that already exist do not freeze building", () => {
   const w = createWorld(1);
   // Split the station in two: a wall across the top of the floor column cuts Harbour Road off from
-  // the concourse, leaving Market Place with island 1 (both its platforms share one walkway).
-  for (let x = 9; x <= 12; x++) w.grid.setTile(x, 60, Tile.Wall);
+  // the concourse, leaving Market Street with island 1 (both its platforms share one walkway).
+  for (let x = 9; x <= 12; x++) w.grid.setTile(OX + x, OY + 60, Tile.Wall);
   expect(reachable(w.grid, entranceTiles("A"), platformTiles(1))).toBe(false);
   expect(reachable(w.grid, entranceTiles("A"), platformTiles(2))).toBe(false);
   expect(reachable(w.grid, entranceTiles("B"), platformTiles(1))).toBe(true);
   expect(reachable(w.grid, entranceTiles("B"), platformTiles(2))).toBe(true);
   // Joins the floor column below the wall, on Harbour Road's side.
-  const p = previewPlacement(w, "floor", { x: 5, y: 61, w: 4, h: 2 });
+  const p = previewPlacement(w, "floor", at(5, 61, 4, 2));
   expect(p.reason).toBeNull();
   expect(p.valid).toBe(true);
-  // Cutting Market Place's side is still refused.
+  // Cutting Market Street's side is still refused.
   expect(previewPlacement(w, "wall", wallAcrossPlatformOneFoot(w)).reason).toBe("Would cut off Platform 1");
-  expect(previewPlacement(w, "remove", { x: 1, y: 55, w: 5, h: 3 }).reason).toBe("Would cut off Platform 1");
+  expect(previewPlacement(w, "remove", at(1, 55, 5, 3)).reason).toBe("Would cut off Platform 1");
 });
 
 test("a ring of walls closed round a queue sends the shopper back out", () => {
   const w = createWorld(1);
   // A floor bay east of the floor column, and a toilet in it.
-  expect(applyPlacement(w, previewPlacement(w, "floor", { x: 13, y: 64, w: 7, h: 9 }))).toBe(true);
-  expect(applyPlacement(w, previewPlacement(w, "toilet", { x: 16, y: 67, w: 2, h: 2 }))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "floor", at(13, 64, 7, 9)))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "toilet", at(16, 67, 2, 2)))).toBe(true);
   const f = [...w.facilities.values()][0]!;
   const front = f.queueTiles[0]!;
   const [qx, qy] = w.grid.xy(front);
-  const i = person(w, qx, qy);
+  const i = person(w, qx - OX, qy - OY);
   expect(tryJoin(w, f, i)).toBe(true);
   w.people.targetKey[i] = "";
   // Two wall placements: the first leaves a gap, the second closes the bay off.
-  expect(applyPlacement(w, previewPlacement(w, "wall", { x: 13, y: 64, w: 1, h: 5 }))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "wall", at(13, 64, 1, 5)))).toBe(true);
   expect(w.people.state[i]).toBe(PState.InQueue);
-  expect(applyPlacement(w, previewPlacement(w, "wall", { x: 13, y: 69, w: 1, h: 4 }))).toBe(true);
-  expect(reachable(w.grid, entranceTiles("A"), [[16, 66]])).toBe(false);
+  expect(applyPlacement(w, previewPlacement(w, "wall", at(13, 69, 1, 4)))).toBe(true);
+  expect(reachable(w.grid, entranceTiles("A"), [st(16, 66)])).toBe(false);
   expect(w.people.state[i]).toBe(PState.Walking);
   expect(f.queue).not.toContain(i);
-  const at = tileAt(w, i);
-  expect(reachable(w.grid, ALL_ENTRANCES(), [at])).toBe(true);
-  expect(reachable(w.grid, [at], platformTiles(1))).toBe(true);
+  const spot = tileAt(w, i);
+  expect(reachable(w.grid, ALL_ENTRANCES(), [spot])).toBe(true);
+  expect(reachable(w.grid, [spot], platformTiles(1))).toBe(true);
 });
 
 test("not enough money refuses", () => {
   const w = createWorld(1);
   w.ledger.balance = 50;
-  const p = previewPlacement(w, "floor", { x: 5, y: 61, w: 4, h: 2 });
-  expect(p.cost).toBe(600);
+  const p = previewPlacement(w, "floor", at(5, 61, 4, 2));
+  expect(p.cost).toBe(800);
   expect(p.valid).toBe(false);
   expect(p.reason).toBe("Not enough money");
   expect(applyPlacement(w, p)).toBe(false);
@@ -171,21 +171,21 @@ test("not enough money refuses", () => {
 test("remove refunds half and keeps platforms reachable", () => {
   const w = createWorld(1);
   const start = w.ledger.balance;
-  const wall = previewPlacement(w, "wall", { x: 6, y: 58, w: 4, h: 1 });
+  const wall = previewPlacement(w, "wall", at(6, 58, 4, 1));
   expect(wall.cost).toBe(80);
   expect(applyPlacement(w, wall)).toBe(true);
   expect(w.ledger.balance).toBe(start - 80);
-  const rm = previewPlacement(w, "remove", { x: 6, y: 58, w: 4, h: 1 });
+  const rm = previewPlacement(w, "remove", at(6, 58, 4, 1));
   expect(rm.cost).toBe(-40);
   expect(applyPlacement(w, rm)).toBe(true);
   expect(w.ledger.balance).toBe(start - 40);
   expect(w.ledger.today.removals).toBe(40);
   // The wall's tiles are plain floor again, not ground.
-  expect(w.grid.tile(6, 58)).toBe(Tile.Floor);
+  expect(w.grid.tile(...st(6, 58))).toBe(Tile.Floor);
 
   // Wall along island 1's foot but for its east end: the island's only way down is then (14, 56).
-  expect(applyPlacement(w, previewPlacement(w, "wall", { x: 8, y: 55, w: 6, h: 1 }))).toBe(true);
-  const cut = previewPlacement(w, "remove", { x: 12, y: 56, w: 4, h: 1 });
+  expect(applyPlacement(w, previewPlacement(w, "wall", at(8, 55, 6, 1)))).toBe(true);
+  const cut = previewPlacement(w, "remove", at(12, 56, 4, 1));
   expect(cut.valid).toBe(false);
   expect(cut.reason).toBe("Would cut off Platform 1");
 });
@@ -196,9 +196,9 @@ test("previews never change the world", () => {
   const balance = w.ledger.balance;
   const tiles = w.grid.tiles.slice();
   const zones = w.grid.zones.slice();
-  previewPlacement(w, "retail", { x: 12, y: 57, w: 2, h: 2 });
-  previewPlacement(w, "remove", { x: 0, y: 0, w: 120, h: 90 });
-  previewPlacement(w, "travelator", { x: 7, y: 58, w: 5, h: 1 }, { dir: Dir.E });
+  previewPlacement(w, "retail", at(12, 57, 2, 2));
+  previewPlacement(w, "remove", at(0, 0, 120, 90));
+  previewPlacement(w, "travelator", at(7, 58, 5, 1), { dir: Dir.E });
   previewPlacement(w, "wall", wallAcrossPlatformOneFoot(w));
   expect(w.grid.version).toBe(v);
   expect(w.ledger.balance).toBe(balance);
@@ -209,24 +209,24 @@ test("previews never change the world", () => {
 
 test("a drag in any direction is normalised and clipped to the map", () => {
   const w = createWorld(1);
-  const p = previewPlacement(w, "floor", { x: 9, y: 63, w: -4, h: -2 });
-  expect(p.rect).toEqual({ x: 5, y: 61, w: 4, h: 2 });
-  expect(p.tiles).toHaveLength(6);
-  const edge = previewPlacement(w, "remove", { x: 118, y: 88, w: 10, h: 10 });
-  expect(edge.rect).toEqual({ x: 118, y: 88, w: 2, h: 2 });
+  const p = previewPlacement(w, "floor", { x: OX + 9, y: OY + 63, w: -4, h: -2 });
+  expect(p.rect).toEqual(at(5, 61, 4, 2));
+  expect(p.tiles).toHaveLength(8);
+  const edge = previewPlacement(w, "remove", { x: w.grid.w - 2, y: w.grid.h - 2, w: 10, h: 10 });
+  expect(edge.rect).toEqual({ x: w.grid.w - 2, y: w.grid.h - 2, w: 2, h: 2 });
 });
 
 test("walls and rails need a line on plain floor", () => {
   const w = createWorld(1);
-  expect(previewPlacement(w, "wall", { x: 6, y: 57, w: 2, h: 2 }).reason).toBe("Draw a line");
-  const rail = previewPlacement(w, "rail", { x: 6, y: 58, w: 3, h: 1 });
+  expect(previewPlacement(w, "wall", at(6, 57, 2, 2)).reason).toBe("Draw a line");
+  const rail = previewPlacement(w, "rail", at(6, 58, 3, 1));
   expect(rail.valid).toBe(true);
   expect(rail.cost).toBe(3 * PRICES.rail);
 });
 
 test("a travelator runs along its direction and sets it through the grid", () => {
   const w = createWorld(1);
-  const line = { x: 9, y: 62, w: 1, h: 5 };
+  const line = at(9, 62, 1, 5);
   expect(previewPlacement(w, "travelator", line).reason).toBe("Draw it along its direction");
   expect(previewPlacement(w, "travelator", line, { dir: Dir.E }).reason).toBe("Draw it along its direction");
   const p = previewPlacement(w, "travelator", line, { dir: Dir.S });
@@ -235,11 +235,11 @@ test("a travelator runs along its direction and sets it through the grid", () =>
   const v = w.grid.version;
   expect(applyPlacement(w, p)).toBe(true);
   expect(w.grid.version).toBeGreaterThan(v);
-  expect(w.grid.zone(9, 64)).toBe(Zone.Travelator);
-  expect(w.grid.dir[w.grid.idx(9, 64)]).toBe(Dir.S);
+  expect(w.grid.zone(...st(9, 64))).toBe(Zone.Travelator);
+  expect(w.grid.dir[w.grid.idx(...st(9, 64))]).toBe(Dir.S);
 
   // Touching one tile takes the whole travelator up, refunding every tile of it.
-  const rm = previewPlacement(w, "remove", { x: 9, y: 64, w: 1, h: 1 });
+  const rm = previewPlacement(w, "remove", at(9, 64, 1, 1));
   expect(rm.tiles).toHaveLength(5);
   expect(rm.cost).toBe(-REMOVE_REFUND * 5 * PRICES.travelator);
   expect(applyPlacement(w, rm)).toBe(true);
@@ -252,7 +252,7 @@ test("a travelator runs along its direction and sets it through the grid", () =>
 
 test("a travelator shorter than three tiles is refused", () => {
   const w = createWorld(1);
-  expect(previewPlacement(w, "travelator", { x: 9, y: 62, w: 1, h: 2 }, { dir: Dir.S }).reason).toBe("Too short");
+  expect(previewPlacement(w, "travelator", at(9, 62, 1, 2), { dir: Dir.S }).reason).toBe("Too short");
 });
 
 test("setDir bumps the grid version", () => {
@@ -265,37 +265,37 @@ test("setDir bumps the grid version", () => {
 
 test("a sign needs a kind and one plain floor tile", () => {
   const w = createWorld(1);
-  expect(previewPlacement(w, "sign", { x: 7, y: 57, w: 1, h: 1 }).reason).toBe("Choose a sign");
-  expect(previewPlacement(w, "sign", { x: 7, y: 57, w: 2, h: 1 }, { signKind: "toilets" }).reason).toBe("Pick one tile");
-  const p = previewPlacement(w, "sign", { x: 7, y: 57, w: 1, h: 1 }, { signKind: "toilets" });
+  expect(previewPlacement(w, "sign", at(7, 57, 1, 1)).reason).toBe("Choose a sign");
+  expect(previewPlacement(w, "sign", at(7, 57, 2, 1), { signKind: "toilets" }).reason).toBe("Pick one tile");
+  const p = previewPlacement(w, "sign", at(7, 57, 1, 1), { signKind: "toilets" });
   expect(p.valid).toBe(true);
   expect(p.cost).toBe(PRICES.sign);
   expect(applyPlacement(w, p)).toBe(true);
   expect(w.signs).toHaveLength(1);
-  expect(w.signs[0]!.tile).toBe(w.grid.idx(7, 57));
+  expect(w.signs[0]!.tile).toBe(w.grid.idx(...st(7, 57)));
 
-  const toilet = previewPlacement(w, "toilet", { x: 12, y: 57, w: 2, h: 2 });
+  const toilet = previewPlacement(w, "toilet", at(12, 57, 2, 2));
   expect(applyPlacement(w, toilet)).toBe(true);
   const id = [...w.facilities.keys()][0]!;
   expect(w.signs[0]!.pointsTo).toBe(id);
 
-  const rm = previewPlacement(w, "remove", { x: 7, y: 57, w: 1, h: 1 });
+  const rm = previewPlacement(w, "remove", at(7, 57, 1, 1));
   expect(rm.cost).toBe(-REMOVE_REFUND * PRICES.sign);
   expect(applyPlacement(w, rm)).toBe(true);
   expect(w.signs).toHaveLength(0);
-  expect(w.grid.tile(7, 57)).toBe(Tile.Floor);
+  expect(w.grid.tile(...st(7, 57))).toBe(Tile.Floor);
 });
 
 test("removing a facility frees its queue, clears its zone and refunds half its price", () => {
   const w = createWorld(1);
-  expect(applyPlacement(w, previewPlacement(w, "toilet", { x: 12, y: 57, w: 2, h: 2 }))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "toilet", at(12, 57, 2, 2)))).toBe(true);
   const f = [...w.facilities.values()][0]!;
   expect(f.kind).toBe(FacilityKind.Toilet);
   const q = person(w, 6, 56);
   expect(tryJoin(w, f, q)).toBe(true);
   const balance = w.ledger.balance;
   // Touching one corner removes the whole unit.
-  const rm = previewPlacement(w, "remove", { x: 13, y: 58, w: 1, h: 1 });
+  const rm = previewPlacement(w, "remove", at(13, 58, 1, 1));
   expect(rm.cost).toBe(-REMOVE_REFUND * f.builtPrice);
   expect(applyPlacement(w, rm)).toBe(true);
   expect(w.facilities.size).toBe(0);
@@ -311,7 +311,7 @@ test("removing a facility frees its queue, clears its zone and refunds half its 
 test("a build that shortens a queue line sends the queuers past its end on their way", () => {
   const w = createWorld(1);
   // A food unit in the concourse's south-west corner, its queue running east along the concourse.
-  expect(applyPlacement(w, previewPlacement(w, "retail", { x: 6, y: 58, w: 2, h: 2 }))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "retail", at(6, 58, 2, 2)))).toBe(true);
   const f = [...w.facilities.values()][0]!;
   f.tenant = Tenant.FoodDrink;
   f.tenantAt = -1;
@@ -411,29 +411,29 @@ test("an island's centre takes seating, toilets, shops, walls, rails and signs; 
   const w = createWorld(1);
   const { x0 } = islandOne(w);
   const ok = (p: ReturnType<typeof previewPlacement>): void => expect([p.reason, p.valid]).toEqual([null, true]);
-  ok(previewPlacement(w, "seating", { x: x0 + 3, y: 30, w: 1, h: 2 }));
-  ok(previewPlacement(w, "retail", { x: x0 + 2, y: 30, w: 3, h: 2 }));
-  ok(previewPlacement(w, "toilet", { x: x0 + 2, y: 30, w: 2, h: 2 }));
-  ok(previewPlacement(w, "wall", { x: x0 + 3, y: 30, w: 1, h: 5 }));
-  ok(previewPlacement(w, "rail", { x: x0 + 2, y: 30, w: 3, h: 1 }));
-  ok(previewPlacement(w, "sign", { x: x0 + 4, y: 30, w: 1, h: 1 }, { signKind: "toilets" }));
+  ok(previewPlacement(w, "seating", { x: x0 + 3, y: OY + 30, w: 1, h: 2 }));
+  ok(previewPlacement(w, "retail", { x: x0 + 2, y: OY + 30, w: 3, h: 2 }));
+  ok(previewPlacement(w, "toilet", { x: x0 + 2, y: OY + 30, w: 2, h: 2 }));
+  ok(previewPlacement(w, "wall", { x: x0 + 3, y: OY + 30, w: 1, h: 5 }));
+  ok(previewPlacement(w, "rail", { x: x0 + 2, y: OY + 30, w: 3, h: 1 }));
+  ok(previewPlacement(w, "sign", { x: x0 + 4, y: OY + 30, w: 1, h: 1 }, { signKind: "toilets" }));
 
   for (const edge of [x0 + 1, x0 + 5]) {
     for (const p of [
-      previewPlacement(w, "seating", { x: edge, y: 30, w: 1, h: 2 }),
-      previewPlacement(w, "wall", { x: edge, y: 30, w: 1, h: 3 }),
-      previewPlacement(w, "sign", { x: edge, y: 30, w: 1, h: 1 }, { signKind: "shops" }),
-      previewPlacement(w, "travelator", { x: edge, y: 30, w: 1, h: 4 }, { dir: Dir.N }),
+      previewPlacement(w, "seating", { x: edge, y: OY + 30, w: 1, h: 2 }),
+      previewPlacement(w, "wall", { x: edge, y: OY + 30, w: 1, h: 3 }),
+      previewPlacement(w, "sign", { x: edge, y: OY + 30, w: 1, h: 1 }, { signKind: "shops" }),
+      previewPlacement(w, "travelator", { x: edge, y: OY + 30, w: 1, h: 4 }, { dir: Dir.N }),
     ]) {
       expect(p.valid).toBe(false);
       expect(p.reason).toBe("Keep the platform edge clear");
     }
   }
   // A wall from edge to edge reaches the edges too.
-  expect(previewPlacement(w, "wall", { x: x0 + 1, y: 30, w: 5, h: 1 }).reason).toBe("Keep the platform edge clear");
+  expect(previewPlacement(w, "wall", { x: x0 + 1, y: OY + 30, w: 5, h: 1 }).reason).toBe("Keep the platform edge clear");
   // Floor never goes on a platform, nor a travelator.
-  expect(previewPlacement(w, "floor", { x: x0 + 2, y: 30, w: 3, h: 3 }).reason).toBe("Nothing to build here");
-  expect(previewPlacement(w, "travelator", { x: x0 + 3, y: 30, w: 1, h: 4 }, { dir: Dir.N }).reason).toBe("Must be on plain floor");
+  expect(previewPlacement(w, "floor", { x: x0 + 2, y: OY + 30, w: 3, h: 3 }).reason).toBe("Nothing to build here");
+  expect(previewPlacement(w, "travelator", { x: x0 + 3, y: OY + 30, w: 1, h: 4 }, { dir: Dir.N }).reason).toBe("Must be on plain floor");
   // The gate row is not centre ground either.
   expect(previewPlacement(w, "seating", { x: x0 + 3, y: islandOne(w).gateY - 1, w: 1, h: 2 }).valid).toBe(false);
 });
@@ -447,33 +447,33 @@ test("a build across the whole centre beside the gates would cut the island off"
   expect(p.reason).toBe("Would cut off Platform 1");
   expect(previewPlacement(w, "retail", { x: x0 + 2, y: gateY - 2, w: 3, h: 2 }).reason).toBe("Would cut off Platform 1");
   // Higher up the edges walk round it.
-  expect(previewPlacement(w, "wall", { x: x0 + 2, y: 40, w: 3, h: 1 }).valid).toBe(true);
+  expect(previewPlacement(w, "wall", { x: x0 + 2, y: OY + 40, w: 3, h: 1 }).valid).toBe(true);
 });
 
 test("removing what stands on an island gives back platform, not floor", () => {
   const w = createWorld(1);
   const { x0 } = islandOne(w);
-  const seat = { x: x0 + 3, y: 30, w: 1, h: 2 };
-  const wall = { x: x0 + 2, y: 36, w: 1, h: 3 };
-  for (const [tool, r] of [["seating", seat], ["wall", wall], ["rail", { x: x0 + 4, y: 36, w: 1, h: 2 }]] as const)
+  const seat = { x: x0 + 3, y: OY + 30, w: 1, h: 2 };
+  const wall = { x: x0 + 2, y: OY + 36, w: 1, h: 3 };
+  for (const [tool, r] of [["seating", seat], ["wall", wall], ["rail", { x: x0 + 4, y: OY + 36, w: 1, h: 2 }]] as const)
     expect(applyPlacement(w, previewPlacement(w, tool, r))).toBe(true);
-  expect(w.grid.tile(x0 + 2, 37)).toBe(Tile.Wall);
-  expect(applyPlacement(w, previewPlacement(w, "remove", { x: x0 + 2, y: 30, w: 3, h: 10 }))).toBe(true);
-  for (const [x, y] of tilesOf({ x: x0 + 2, y: 30, w: 3, h: 10 })) {
+  expect(w.grid.tile(x0 + 2, OY + 37)).toBe(Tile.Wall);
+  expect(applyPlacement(w, previewPlacement(w, "remove", { x: x0 + 2, y: OY + 30, w: 3, h: 10 }))).toBe(true);
+  for (const [x, y] of tilesOf({ x: x0 + 2, y: OY + 30, w: 3, h: 10 })) {
     expect(w.grid.tile(x, y)).toBe(Tile.Platform);
     expect(w.grid.zone(x, y)).toBe(Zone.None);
   }
   expect(w.facilities.size).toBe(0);
   // Bare platform is not removed.
-  expect(previewPlacement(w, "remove", { x: x0 + 2, y: 30, w: 3, h: 10 }).reason).toBe("Nothing to remove here");
+  expect(previewPlacement(w, "remove", { x: x0 + 2, y: OY + 30, w: 3, h: 10 }).reason).toBe("Nothing to remove here");
 });
 
 test("built-on platform is no place to board or wait, and queues keep off the edges and the gate row", () => {
   const w = createWorld(1);
   const { x0, gateY } = islandOne(w);
-  const seat = { x: x0 + 2, y: 30, w: 1, h: 2 };
+  const seat = { x: x0 + 2, y: OY + 30, w: 1, h: 2 };
   expect(applyPlacement(w, previewPlacement(w, "seating", seat))).toBe(true);
-  expect(applyPlacement(w, previewPlacement(w, "retail", { x: x0 + 2, y: 44, w: 3, h: 2 }))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "retail", { x: x0 + 2, y: OY + 44, w: 3, h: 2 }))).toBe(true);
   const seatTiles = tilesOf(seat).map(([x, y]) => w.grid.idx(x, y));
   const targets = fieldTargets(w, "platform:1");
   for (const t of seatTiles) expect(targets).not.toContain(t);
@@ -488,4 +488,18 @@ test("built-on platform is no place to board or wait, and queues keep off the ed
     expect(x).toBeLessThanOrEqual(x0 + 4);
     expect(y).toBeLessThan(gateY);
   }
+});
+
+test("a shop built over someone standing on an island's centre moves them to a walkable tile joined to the entrances", () => {
+  const w = createWorld(1);
+  const { x0 } = islandOne(w);
+  const i = person(w, x0 + 3 - OX, 35);
+  const unit = { x: x0 + 2, y: OY + 34, w: 3, h: 2 };
+  expect(applyPlacement(w, previewPlacement(w, "retail", unit))).toBe(true);
+  expect(w.grid.zone(x0 + 3, OY + 35)).toBe(Zone.Retail);
+  const [x, y] = tileAt(w, i);
+  expect(w.grid.isWalkable(x, y)).toBe(true);
+  expect(x >= unit.x && x < unit.x + unit.w && y >= unit.y && y < unit.y + unit.h).toBe(false);
+  expect(reachable(w.grid, ALL_ENTRANCES(), [[x, y]])).toBe(true);
+  expect(reachable(w.grid, [[x, y]], platformTiles(1))).toBe(true);
 });

@@ -1,4 +1,4 @@
-import { Tile, Zone } from "./grid";
+import { Tile, Zone, type Grid } from "./grid";
 import type { World } from "./world";
 
 export type LedgerLine = "rent" | "fares" | "refunds" | "build" | "maintenance" | "evictions" | "removals";
@@ -112,42 +112,38 @@ export class Ledger {
 /** Upkeep for one day: a zoned tile pays its zone's rate instead of the floor rate. */
 export function dailyUpkeep(w: World): number {
   const g = w.grid;
+  const r = w.map.grounds;
   let total = 0;
-  for (let i = 0; i < g.tiles.length; i++) {
-    switch (g.zones[i] as Zone) {
-      case Zone.Retail:
-        total += UPKEEP_PER_DAY.retail;
-        continue;
-      case Zone.Seating:
-        total += UPKEEP_PER_DAY.seating;
-        continue;
-      case Zone.Toilet:
-        total += UPKEEP_PER_DAY.toilet;
-        continue;
-      case Zone.Travelator:
-        total += UPKEEP_PER_DAY.travelator;
-        continue;
-      default:
-        break;
-    }
-    switch (g.tiles[i] as Tile) {
-      case Tile.Floor:
-      case Tile.Platform:
-      case Tile.Entrance:
-        total += UPKEEP_PER_DAY.floor;
-        break;
-      case Tile.Wall:
-        total += UPKEEP_PER_DAY.wall;
-        break;
-      case Tile.Rail:
-        total += UPKEEP_PER_DAY.rail;
-        break;
-      case Tile.Gate:
-        total += UPKEEP_PER_DAY.gate;
-        break;
-      default:
-        break;
-    }
-  }
+  // Nothing is built outside the station's grounds.
+  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) total += tileUpkeep(g, y * g.w + x);
   return total + w.signs.length * UPKEEP_PER_DAY.sign;
+}
+
+function tileUpkeep(g: Grid, i: number): number {
+  switch (g.zones[i] as Zone) {
+    case Zone.Retail:
+      return UPKEEP_PER_DAY.retail;
+    case Zone.Seating:
+      return UPKEEP_PER_DAY.seating;
+    case Zone.Toilet:
+      return UPKEEP_PER_DAY.toilet;
+    case Zone.Travelator:
+      return UPKEEP_PER_DAY.travelator;
+    default:
+      break;
+  }
+  switch (g.tiles[i] as Tile) {
+    case Tile.Floor:
+    case Tile.Platform:
+    case Tile.Entrance:
+      return UPKEEP_PER_DAY.floor;
+    case Tile.Wall:
+      return UPKEEP_PER_DAY.wall;
+    case Tile.Rail:
+      return UPKEEP_PER_DAY.rail;
+    case Tile.Gate:
+      return UPKEEP_PER_DAY.gate;
+    default:
+      return 0;
+  }
 }

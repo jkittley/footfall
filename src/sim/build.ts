@@ -1,6 +1,7 @@
 import { PRICES, REMOVE_REFUND } from "./economy";
 import { FacilityKind, createFacility, refreshAccess, releasePerson, removeFacility, serviceTilesOf, type Facility } from "./facilities";
 import { Dir, Tile, Zone, type Grid, type Rect } from "./grid";
+import { inRect, walkArea } from "./maps/city";
 import { isIslandCentre, isPlatformEdge } from "./maps/harbourStreet";
 import { nudgeToWalkable } from "./movement";
 import { addSign, refreshSigns, type Sign } from "./needs";
@@ -140,10 +141,6 @@ function isFoot(w: World, i: number): boolean {
   return w.map.slots.some((s) => x >= s.foot.x && y >= s.foot.y && x < s.foot.x + s.foot.w && y < s.foot.y + s.foot.h);
 }
 
-function inRect(r: Rect, x: number, y: number): boolean {
-  return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
-}
-
 /**
  * Tiles in the rect that an island with no platform opened yet keeps for itself: its walkway and
  * tracks take nothing, and its foot takes only floor (how the player joins it up before it opens).
@@ -181,9 +178,14 @@ function planFloor(w: World, plan: Plan): Plan {
   const g = w.grid;
   const pv = plan.preview;
   let joins = false;
+  let outside = false;
   for (const i of rectTiles(g, pv.rect)) {
     const t = g.tiles[i] as Tile;
-    if (t === Tile.Ground) {
+    const [gx, gy] = g.xy(i);
+    if (t === Tile.Ground && !inRect(w.map.grounds, gx, gy)) {
+      outside = true;
+      pv.blocked.push(i);
+    } else if (t === Tile.Ground) {
       pv.tiles.push(i);
       const [x, y] = g.xy(i);
       if (NEIGHBOURS.some(([dx, dy]) => g.isWalkable(x + dx, y + dy))) joins = true;
@@ -193,7 +195,7 @@ function planFloor(w: World, plan: Plan): Plan {
   }
   pv.cost = pv.tiles.length * PRICES.floor;
   plan.edits = pv.tiles.map((i) => ({ i, tile: Tile.Floor }));
-  if (pv.tiles.length === 0) return refuse(plan, "Nothing to build here");
+  if (pv.tiles.length === 0) return refuse(plan, outside ? "Outside the station grounds" : "Nothing to build here");
   if (!joins) return refuse(plan, "Must join existing floor");
   return plan;
 }
@@ -351,7 +353,7 @@ function travelatorTiles(g: Grid, tiles: readonly number[]): number[] {
     else out.add(i);
   }
   if (owners.size > 0)
-    for (let i = 0; i < g.zones.length; i++) if (g.zones[i] === Zone.Travelator && owners.has(g.zoneOwner[i]!)) out.add(i);
+    for (const i of rectTiles(g, walkArea())) if (g.zones[i] === Zone.Travelator && owners.has(g.zoneOwner[i]!)) out.add(i);
   return [...out];
 }
 
@@ -365,39 +367,64 @@ function applyEdits(g: Grid, edits: readonly Edit[], owner = -1): void {
   }
 }
 
-/** Connected walkable regions (4-neighbour) as a label per tile, -1 where not walkable. */
-function regions(g: Grid): Int32Array {
-  const label = new Int32Array(g.w * g.h).fill(-1);
-  const queue = new Int32Array(g.w * g.h);
-  let next = 0;
-  for (let s = 0; s < label.length; s++) {
-    if (label[s] !== -1) continue;
-    const [sx, sy] = g.xy(s);
-    if (!g.isWalkable(sx, sy)) continue;
-    let head = 0;
-    let tail = 0;
-    queue[tail++] = s;
-    label[s] = next;
-    while (head < tail) {
-      const t = queue[head++]!;
-      const x = t % g.w;
-      const y = (t - x) / g.w;
-      for (const [dx, dy] of NEIGHBOURS) {
-        if (!g.isWalkable(x + dx, y + dy)) continue;
-        const n = t + dy * g.w + dx;
-        if (label[n] !== -1) continue;
-        label[n] = next;
-        queue[tail++] = n;
+/**
+ * Connected walkable regions (4-neighbour) over the walk area (nothing outside it is ever walkable),
+ * as a label per tile of the area, -1 where not walkable.
+ */
+class Regions {
+  readonly area: Rect;
+  readonly label: Int32Array;
+
+  constructor(g: Grid) {
+    const a = walkArea();
+    this.area = a;
+    const label = new Int32Array(a.w * a.h).fill(-1);
+    this.label = label;
+    const queue = new Int32Array(a.w * a.h);
+    let next = 0;
+    for (let s = 0; s < label.length; s++) {
+      if (label[s] !== -1) continue;
+      const sx = a.x + (s % a.w);
+      const sy = a.y + Math.floor(s / a.w);
+      if (!g.isWalkable(sx, sy)) continue;
+      let head = 0;
+      let tail = 0;
+      queue[tail++] = s;
+      label[s] = next;
+      while (head < tail) {
+        const t = queue[head++]!;
+        const lx = t % a.w;
+        const ly = (t - lx) / a.w;
+        for (const [dx, dy] of NEIGHBOURS) {
+          const nx = lx + dx;
+          const ny = ly + dy;
+          if (nx < 0 || ny < 0 || nx >= a.w || ny >= a.h || !g.isWalkable(a.x + nx, a.y + ny)) continue;
+          const n = ny * a.w + nx;
+          if (label[n] !== -1) continue;
+          label[n] = next;
+          queue[tail++] = n;
+        }
       }
+      next++;
     }
-    next++;
   }
-  return label;
+
+  /** The region of grid tile `i`, -1 if it is not walkable (or outside the area). */
+  at(g: Grid, i: number): number {
+    const a = this.area;
+    const x = (i % g.w) - a.x;
+    const y = Math.floor(i / g.w) - a.y;
+    if (x < 0 || y < 0 || x >= a.w || y >= a.h) return -1;
+    return this.label[y * a.w + x]!;
+  }
 }
 
-function labelsOf(label: Int32Array, tiles: readonly number[]): Set<number> {
+function labelsOf(g: Grid, regions: Regions, tiles: readonly number[]): Set<number> {
   const out = new Set<number>();
-  for (const t of tiles) if (label[t]! >= 0) out.add(label[t]!);
+  for (const t of tiles) {
+    const l = regions.at(g, t);
+    if (l >= 0) out.add(l);
+  }
   return out;
 }
 
@@ -407,14 +434,14 @@ function shares(a: Set<number>, b: Set<number>): boolean {
 }
 
 // Previews run on every mouse move: the world's own regions only change with its grid.
-const regionCache = new WeakMap<Grid, { version: number; label: Int32Array }>();
+const regionCache = new WeakMap<Grid, { version: number; regions: Regions }>();
 
-function currentRegions(g: Grid): Int32Array {
+function currentRegions(g: Grid): Regions {
   const hit = regionCache.get(g);
-  if (hit && hit.version === g.version) return hit.label;
-  const label = regions(g);
-  regionCache.set(g, { version: g.version, label });
-  return label;
+  if (hit && hit.version === g.version) return hit.regions;
+  const regions = new Regions(g);
+  regionCache.set(g, { version: g.version, regions });
+  return regions;
 }
 
 /**
@@ -424,14 +451,14 @@ function currentRegions(g: Grid): Int32Array {
  */
 function reachReason(w: World, after: Grid): string | null {
   const before = currentRegions(w.grid);
-  const now = regions(after);
+  const now = new Regions(after);
   // Where its passengers board: built-on platform and the gate row do not count.
   const platforms = activePlatformIds(w).map((id) => ({ id, tiles: fieldTargets(w, `platform:${id}`) }));
   const entrances = w.map.entrances.map((e) => ({ id: e.id, tiles: rectTiles(w.grid, e.tiles) }));
   const pairs = entrances.flatMap((e) =>
-    platforms.filter((p) => shares(labelsOf(before, e.tiles), labelsOf(before, p.tiles))).map((p) => ({ e, p })),
+    platforms.filter((p) => shares(labelsOf(w.grid, before, e.tiles), labelsOf(w.grid, before, p.tiles))).map((p) => ({ e, p })),
   );
-  const kept = pairs.filter(({ e, p }) => shares(labelsOf(now, e.tiles), labelsOf(now, p.tiles)));
+  const kept = pairs.filter(({ e, p }) => shares(labelsOf(after, now, e.tiles), labelsOf(after, now, p.tiles)));
   for (const p of platforms) {
     if (pairs.some((x) => x.p === p) && !kept.some((x) => x.p === p)) return `Would cut off Platform ${p.id}`;
   }
@@ -520,15 +547,15 @@ export function applyPlacement(w: World, p: PlacementPreview): boolean {
 function settlePeople(w: World): void {
   const g = w.grid;
   const p = w.people;
-  const label = currentRegions(g);
+  const regions = currentRegions(g);
   const platformRegions = new Set<number>();
   for (const id of activePlatformIds(w))
-    for (const l of labelsOf(label, fieldTargets(w, `platform:${id}`))) platformRegions.add(l);
+    for (const l of labelsOf(g, regions, fieldTargets(w, `platform:${id}`))) platformRegions.add(l);
   const safeRegions = new Set<number>();
   for (const e of w.map.entrances)
-    for (const l of labelsOf(label, rectTiles(g, e.tiles))) if (platformRegions.has(l)) safeRegions.add(l);
-  const joined = new Uint8Array(label.length);
-  for (let t = 0; t < label.length; t++) if (safeRegions.has(label[t]!)) joined[t] = 1;
+    for (const l of labelsOf(g, regions, rectTiles(g, e.tiles))) if (platformRegions.has(l)) safeRegions.add(l);
+  const joined = new Uint8Array(g.w * g.h);
+  for (const t of rectTiles(g, regions.area)) if (safeRegions.has(regions.at(g, t))) joined[t] = 1;
 
   for (let i = 0, end = p.end; i < end; i++) {
     if (!p.isAlive(i)) continue;

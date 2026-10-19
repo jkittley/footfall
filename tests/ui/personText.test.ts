@@ -4,6 +4,7 @@ import { walkMinutes } from "../../src/sim/routeField";
 import { fieldFor } from "../../src/sim/walk";
 import { createWorld } from "../../src/sim/world";
 import { errandLine, goalFacts, goalLine, timeLeftIsShort, walkFromHere, NEED_LABELS } from "../../src/ui/personText";
+import { OX, OY } from "../sim/helpers";
 
 const at = (h: number, m: number): number => 1440 * 3 + h * 60 + m;
 
@@ -60,8 +61,8 @@ test("goalFacts reads a departing passenger's service off the world", () => {
   const w = createWorld(3);
   const svc = w.timetable.upcoming(1, w.minute)[0]!;
   const i = w.people.alloc();
-  w.people.x[i] = 10.5;
-  w.people.y[i] = 56.5;
+  w.people.x[i] = OX + 10.5;
+  w.people.y[i] = OY + 56.5;
   w.people.journey[i] = Journey.Departing;
   w.people.goalKey[i] = "platform:1";
   w.people.serviceId[i] = svc.id;
@@ -76,29 +77,29 @@ test("goalFacts reads a departing passenger's service off the world", () => {
 test("goalFacts names the entrance an arriving passenger leaves by", () => {
   const w = createWorld(3);
   const i = w.people.alloc();
-  w.people.x[i] = 10.5;
-  w.people.y[i] = 70.5;
+  w.people.x[i] = OX + 10.5;
+  w.people.y[i] = OY + 70.5;
   w.people.journey[i] = Journey.Arriving;
   w.people.goalKey[i] = "exit:C";
   w.people.destLabel[i] = DestLabel.Work;
   w.people.deadline[i] = 3 * 1440 + 9 * 60 + 10;
-  expect(goalLine(goalFacts(w, i))).toBe("Leave by Quay Lane, going to work by 09:10");
+  expect(goalLine(goalFacts(w, i))).toBe("Leave by Footbridge, going to work by 09:10");
 });
 
 test("walkFromHere is the unimpeded walk to the goal, or 0 when there is none", () => {
   const w = createWorld(3);
   const i = w.people.alloc();
-  w.people.x[i] = 10.5;
-  w.people.y[i] = 70.5;
+  w.people.x[i] = OX + 10.5;
+  w.people.y[i] = OY + 70.5;
   w.people.goalKey[i] = "exit:A";
-  const expected = walkMinutes(fieldFor(w, "exit:A"), w.grid.idx(10, 70));
+  const expected = walkMinutes(fieldFor(w, "exit:A"), w.grid.idx(OX + 10, OY + 70));
   expect(expected).toBeGreaterThan(0);
   expect(walkFromHere(w, i)).toBeCloseTo(expected, 9);
   w.people.goalKey[i] = "";
   expect(walkFromHere(w, i)).toBe(0);
   // Standing on ground the goal can't be reached from.
   w.people.goalKey[i] = "exit:A";
-  w.people.x[i] = 60.5;
-  w.people.y[i] = 40.5;
+  w.people.x[i] = OX + 60.5;
+  w.people.y[i] = OY + 40.5;
   expect(walkFromHere(w, i)).toBe(0);
 });

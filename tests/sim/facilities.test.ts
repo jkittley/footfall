@@ -24,11 +24,11 @@ import { stepMovement } from "../../src/sim/movement";
 import { NEED_COUNT, Need, PState } from "../../src/sim/people";
 import { Rng } from "../../src/sim/rng";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { runMinutes } from "./helpers";
+import { OX, OY, at, runMinutes } from "./helpers";
 
 // A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
-const ISLAND: Rect = { x: 60, y: 30, w: 20, h: 20 };
-const UNIT: Rect = { x: 68, y: 40, w: 2, h: 2 };
+const ISLAND: Rect = at(60, 30, 20, 20);
+const UNIT: Rect = at(68, 40, 2, 2);
 
 function islandWorld(): World {
   const w = createWorld(1);
@@ -47,8 +47,8 @@ function foodUnit(w: World): Facility {
 function person(w: World, x: number, y: number, leisure = false): number {
   const p = w.people;
   const i = p.alloc();
-  p.x[i] = x + 0.5;
-  p.y[i] = y + 0.5;
+  p.x[i] = OX + x + 0.5;
+  p.y[i] = OY + y + 0.5;
   p.state[i] = PState.Walking;
   p.goalKey[i] = "exit:A";
   p.targetKey[i] = "facility:1";
@@ -229,9 +229,9 @@ test("queue tiles run as a line of plain floor away from the unit", () => {
 
 test("a seat holds area x 2 people, then they stand rested", () => {
   const w = islandWorld();
-  const seats = createFacility(w, FacilityKind.Seating, { x: 62, y: 44, w: 1, h: 1 });
+  const seats = createFacility(w, FacilityKind.Seating, at(62, 44, 1, 1));
   expect(seats.capacity).toBe(2);
-  expect(fieldTargets(w, `seat:${seats.id}`)).toEqual([w.grid.idx(62, 44)]);
+  expect(fieldTargets(w, `seat:${seats.id}`)).toEqual([w.grid.idx(OX + 62, OY + 44)]);
   const a = person(w, 62, 44);
   const b = person(w, 62, 44);
   const c = person(w, 62, 44);
@@ -253,11 +253,11 @@ test("a seat holds area x 2 people, then they stand rested", () => {
 
 test("a seated person stands in time to make their deadline", () => {
   const w = createWorld(1);
-  const seats = createFacility(w, FacilityKind.Seating, { x: 10, y: 70, w: 1, h: 1 });
+  const seats = createFacility(w, FacilityKind.Seating, at(10, 70, 1, 1));
   const p = w.people;
   const a = p.alloc();
-  p.x[a] = 10.5;
-  p.y[a] = 70.5;
+  p.x[a] = OX + 10.5;
+  p.y[a] = OY + 70.5;
   p.state[a] = PState.Walking;
   p.goalKey[a] = "exit:A";
   // About 9 tiles from Harbour Road: roughly 8.6 minutes' walk, so they stand by deadline - 13.6.
@@ -327,11 +327,11 @@ test("a queuer gives up after QUEUE_GIVE_UP_MIN, need unmet", () => {
 
 test("a queuer leaves to make their deadline", () => {
   const w = createWorld(1);
-  const f = createFacility(w, FacilityKind.Toilet, { x: 12, y: 66, w: 1, h: 2 });
+  const f = createFacility(w, FacilityKind.Toilet, at(12, 66, 1, 2));
   const p = w.people;
   const a = p.alloc();
-  p.x[a] = 10.5;
-  p.y[a] = 70.5;
+  p.x[a] = OX + 10.5;
+  p.y[a] = OY + 70.5;
   p.state[a] = PState.Walking;
   p.goalKey[a] = "exit:A";
   // About 8.6 minutes' walk to Harbour Road: they need to go once fewer than 13.6 minutes remain.

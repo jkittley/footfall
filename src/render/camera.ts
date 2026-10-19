@@ -1,6 +1,7 @@
 import { TILE_PX } from "../sim/constants";
 
-export const MIN_ZOOM = 0.5;
+// Low enough to see most of the city at once.
+export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 3;
 /** Zoom factor per pixel of wheel deltaY. */
 const WHEEL_RATE = 0.0015;

@@ -4,7 +4,7 @@ import { FacilityKind, createFacility } from "../../src/sim/facilities";
 import { Tile, Zone } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
 import { activePlatformIds, createWorld, recordOutcome, type World } from "../../src/sim/world";
-import { platformTiles, tilesOf } from "./helpers";
+import { OY, OX, platformTiles, tilesOf } from "./helpers";
 
 function toasts(w: World): string[] {
   return w.events.flatMap((e) => (e.kind === "toast" ? [e.text] : []));
@@ -85,8 +85,8 @@ test("rebooks passengers when a platform goes inactive", () => {
   w.timetable.ensureHorizon(w.minute, activePlatformIds(w), w.rng);
   const booked = w.timetable.upcoming(3, w.minute)[0]!;
   const i = w.people.alloc();
-  w.people.x[i] = 10.5;
-  w.people.y[i] = 57.5;
+  w.people.x[i] = OX + 10.5;
+  w.people.y[i] = OY + 57.5;
   w.people.state[i] = PState.Walking;
   w.people.serviceId[i] = booked.id;
   w.people.goalKey[i] = "platform:3";

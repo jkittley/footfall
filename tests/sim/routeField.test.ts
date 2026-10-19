@@ -40,7 +40,8 @@ describe("route fields", () => {
     g.setTile(2, 0, Tile.Wall);
     const b = c.get("t", () => [g.idx(4, 0)]);
     expect(b[g.idx(0, 0)]).toBe(Infinity);
-    expect(a).not.toBe(b);
+    // Recomputed into the key's own buffer rather than a new one.
+    expect(b).toBe(a);
   });
 
   test("diagonals cost sqrt2 and cannot cut a wall corner", () => {

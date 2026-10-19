@@ -7,17 +7,22 @@ export class CrowdGrid {
   readonly w: number;
   readonly h: number;
   counts: Uint16Array;
+  /** Tiles counted in the last rebuild, so the next clears only those rather than the whole grid. */
+  private touched: Int32Array;
+  private touchedN = 0;
 
   constructor(w: number, h: number) {
     this.w = w;
     this.h = h;
     this.counts = new Uint16Array(w * h);
+    this.touched = new Int32Array(1024);
   }
 
   rebuild(people: PeopleStore, grid: Grid): void {
     if (grid.w !== this.w || grid.h !== this.h) throw new Error("CrowdGrid size does not match grid");
     const counts = this.counts;
-    counts.fill(0);
+    for (let k = 0; k < this.touchedN; k++) counts[this.touched[k]!] = 0;
+    this.touchedN = 0;
     const { x, y, state } = people;
     for (let i = 0, end = people.end; i < end; i++) {
       if (!people.isAlive(i)) continue;
@@ -28,8 +33,18 @@ export class CrowdGrid {
       const ty = Math.floor(y[i]!);
       if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) continue;
       const t = ty * this.w + tx;
+      if (counts[t] === 0) this.touch(t);
       if (counts[t]! < 0xffff) counts[t] = counts[t]! + 1;
     }
+  }
+
+  private touch(t: number): void {
+    if (this.touchedN === this.touched.length) {
+      const grown = new Int32Array(this.touched.length * 2);
+      grown.set(this.touched);
+      this.touched = grown;
+    }
+    this.touched[this.touchedN++] = t;
   }
 
   at(i: number): number {

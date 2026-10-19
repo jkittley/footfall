@@ -15,6 +15,26 @@ export const ALERT = "#C4342C";
 export const INK = "#1E2126";
 export const INK_2 = "#585D65";
 
+// The city map, after docs/design/city-layout.html.
+export const WATER = "#A9D3EA";
+/** The faint grid on the water. */
+export const WATER_GRID = "rgba(255,255,255,0.28)";
+/** Names written on the water. */
+export const WATER_INK = "#2C5A75";
+/** The pale band along the shore, and pavements. */
+export const SHORE = "#FBFAF7";
+export const PARK = "#DCE8C8";
+export const TREE = "#A9C98A";
+export const TREE_LIGHT = "#C6DDAE";
+/** A tree's soft shadow (Wall at 8%). */
+export const TREE_SHADOW = "rgba(35,38,43,0.08)";
+/** The carriageway. */
+export const ROAD = "#FBFAF7";
+/** The kerb either side of a road. */
+export const KERB = "#D9D3C8";
+/** A later stage's site under its haze. */
+export const HAZE = "#E4E0D8";
+
 /** Person colour by Mode: train, subway, flight, street. */
 export const MODE_COLOURS: Record<Mode, string> = {
   [Mode.Train]: CIRCLE,

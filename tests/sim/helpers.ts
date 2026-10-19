@@ -1,9 +1,23 @@
 import { Grid, Tile, type Rect } from "../../src/sim/grid";
+import { CITY } from "../../src/sim/maps/city";
 import { HARBOUR_STREET, type StationMap } from "../../src/sim/maps/harbourStreet";
 import { SIM_DT } from "../../src/sim/constants";
 import { step, type World } from "../../src/sim/world";
 
 export type XY = [number, number];
+
+/** The station's corner in the city: tests write station positions in its own coordinates. */
+export const [OX, OY] = CITY.station.origin;
+
+/** A rect in the station's own coordinates, placed in the city. */
+export function at(x: number, y: number, w = 1, h = 1): Rect {
+  return { x: OX + x, y: OY + y, w, h };
+}
+
+/** A tile in the station's own coordinates, placed in the city. */
+export function st(x: number, y: number): XY {
+  return [OX + x, OY + y];
+}
 const DIRS: XY[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 export function tilesOf(r: Rect): XY[] {
@@ -90,20 +104,23 @@ export function shortestPath(g: Grid, from: XY[], to: XY[]): XY[] | null {
   return null;
 }
 
+/** Tiles nothing can be built on or walk through: the station's obstacles and the city's water, parks, roads and locked sites. */
+export function isBarrier(t: Tile): boolean {
+  return t === Tile.Obstacle || t === Tile.Water || t === Tile.Park || t === Tile.Road || t === Tile.Locked;
+}
+
 /**
- * Narrow gaps: runs of min..max non-obstacle tiles in a row or column with
- * obstacles at both ends. A run repeating with the same extent on consecutive
- * lines is one gap (otherwise a 10-row-long channel would count 10 times).
+ * Narrow gaps inside `area`: runs of min..max non-barrier tiles in a row or column with barriers
+ * at both ends. A run repeating with the same extent on consecutive lines is one gap (otherwise a
+ * 10-row-long channel would count 10 times).
  */
-export function narrowGaps(map: StationMap, min: number, max: number): XY[][] {
-  const blocked = new Uint8Array(map.w * map.h);
-  for (const o of map.obstacles) for (const [x, y] of tilesOf(o.rect)) blocked[y * map.w + x] = 1;
-  const at = (x: number, y: number) => blocked[y * map.w + x] === 1;
+export function narrowGaps(g: Grid, area: Rect, min: number, max: number): XY[][] {
+  const at = (x: number, y: number) => isBarrier(g.tile(area.x + x, area.y + y));
   const gaps: XY[][] = [];
   const open = new Map<string, XY[]>();
   const scan = (horizontal: boolean) => {
-    const lines = horizontal ? map.h : map.w;
-    const len = horizontal ? map.w : map.h;
+    const lines = horizontal ? area.h : area.w;
+    const len = horizontal ? area.w : area.h;
     for (let line = 0; line < lines; line++) {
       let start = -1;
       for (let p = 0; p <= len; p++) {
@@ -115,7 +132,7 @@ export function narrowGaps(map: StationMap, min: number, max: number): XY[][] {
         if (start > 0 && p < len && p - start >= min && p - start <= max) {
           const tag = `${horizontal ? "h" : "v"}:${start}:${p - start}`;
           const tiles: XY[] = [];
-          for (let q = start; q < p; q++) tiles.push(horizontal ? [q, line] : [line, q]);
+          for (let q = start; q < p; q++) tiles.push(horizontal ? [area.x + q, area.y + line] : [area.x + line, area.y + q]);
           const existing = open.get(`${tag}:${line - 1}`);
           if (existing) {
             existing.push(...tiles);
@@ -134,8 +151,13 @@ export function narrowGaps(map: StationMap, min: number, max: number): XY[][] {
   return gaps;
 }
 
-export function countNarrowGaps(map: StationMap, min: number, max: number): number {
-  return narrowGaps(map, min, max).length;
+export function countNarrowGaps(g: Grid, area: Rect, min: number, max: number): number {
+  return narrowGaps(g, area, min, max).length;
+}
+
+/** Every Ground tile of the station grounds made floor: the most the player could ever build. */
+export function fillGroundsWithFloor(g: Grid, map: StationMap = HARBOUR_STREET): void {
+  for (const [x, y] of tilesOf(map.grounds)) if (g.tile(x, y) === Tile.Ground) g.setTile(x, y, Tile.Floor);
 }
 
 /** w x h grid of walkable floor. */

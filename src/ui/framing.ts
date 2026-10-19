@@ -25,9 +25,9 @@ export function stationBounds(g: Grid, floorOnly = false): Rect | null {
 /** Gap (CSS px) kept between the HUD and the station, and at the free screen edges. */
 export const HUD_GAP = 16;
 /**
- * Extra room (CSS px) left of the rail for a side entrance's name pill ("Entrance B · Market
- * Place", about 190px), which is drawn outside the map's left edge: with the camera's 4-tile
- * margin this keeps it clear of the rail when the station sits at that edge.
+ * Extra room (CSS px) left of the rail for Entrance B's name pill ("Entrance B · Market Street",
+ * about 200px), which is drawn left of the station's west edge, so it stays clear of the rail when
+ * the station is framed.
  */
 const SIDE_PILL_ROOM_PX = 120;
 

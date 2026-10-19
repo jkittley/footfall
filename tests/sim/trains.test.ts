@@ -4,7 +4,7 @@ import { deactivatePlatform } from "../../src/sim/growth";
 import { stepTrains } from "../../src/sim/trains";
 import { applyPlacement, previewPlacement } from "../../src/sim/build";
 import { PState } from "../../src/sim/people";
-import { platformTiles, runMinutes } from "./helpers";
+import { OY, OX, platformTiles, runMinutes } from "./helpers";
 
 function firstService(w: World, platformId: number) {
   const s = w.timetable.upcoming(platformId, w.minute)[0];
@@ -36,8 +36,8 @@ test("a passenger not on the platform at departure misses once and is rebooked",
   const w = createWorld(3);
   const s = firstService(w, 1);
   const i = w.people.alloc();
-  w.people.x[i] = 10.5;
-  w.people.y[i] = 70.5;
+  w.people.x[i] = OX + 10.5;
+  w.people.y[i] = OY + 70.5;
   w.people.state[i] = PState.Walking;
   w.people.serviceId[i] = s.id;
 
@@ -69,8 +69,8 @@ test("a passenger booked on a cancelled service is rebooked, not left dangling",
   const w = createWorld(6);
   const s = firstService(w, 1);
   const i = w.people.alloc();
-  w.people.x[i] = 10.5;
-  w.people.y[i] = 57.5;
+  w.people.x[i] = OX + 10.5;
+  w.people.y[i] = OY + 57.5;
   w.people.state[i] = PState.Walking;
   w.people.serviceId[i] = s.id;
   w.people.goalKey[i] = "platform:1";
@@ -115,10 +115,10 @@ test("a platform-2 passenger waits on the right half and boards from it", () => 
 test("nobody boards from a seat built on their half of the island", () => {
   const w = createWorld(2);
   const x0 = w.map.islands[0]!.leftTrack.x;
-  const seat = previewPlacement(w, "seating", { x: x0 + 2, y: 30, w: 1, h: 2 });
+  const seat = previewPlacement(w, "seating", { x: x0 + 2, y: OY + 30, w: 1, h: 2 });
   expect(applyPlacement(w, seat)).toBe(true);
-  const onSeat = waitingAt(w, 1, [x0 + 2, 30]);
-  const onEdge = waitingAt(w, 1, [x0 + 1, 30]);
+  const onSeat = waitingAt(w, 1, [x0 + 2, OY + 30]);
+  const onEdge = waitingAt(w, 1, [x0 + 1, OY + 30]);
   w.minute = firstService(w, 1).arriveAt + 1;
   stepTrains(w);
   expect(w.people.isAlive(onEdge)).toBe(false);

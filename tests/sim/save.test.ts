@@ -12,7 +12,7 @@ import { Grid } from "../../src/sim/grid";
 import { ServiceMeter } from "../../src/sim/growth";
 import { Timetable } from "../../src/sim/timetable";
 import { createWorld, step, type World } from "../../src/sim/world";
-import { runMinutes } from "./helpers";
+import { at, runMinutes, st } from "./helpers";
 
 const MON_0815 = 8 * 60 + 15;
 const MON_0840 = 8 * 60 + 40;
@@ -29,10 +29,10 @@ function build(w: World, tool: ToolId, rect: Rect, opts: BuildOpts = {}): void {
  */
 function furnishedWorld(seed: number, tenantAt = -1): World {
   const w = createWorld(seed);
-  build(w, "floor", { x: 16, y: 56, w: 10, h: 6 });
-  build(w, "retail", { x: 18, y: 59, w: 2, h: 2 });
-  build(w, "toilet", { x: 22, y: 59, w: 2, h: 2 });
-  build(w, "sign", { x: 15, y: 57, w: 1, h: 1 }, { signKind: "toilets" });
+  build(w, "floor", at(16, 56, 10, 6));
+  build(w, "retail", at(18, 59, 2, 2));
+  build(w, "toilet", at(22, 59, 2, 2));
+  build(w, "sign", at(15, 57, 1, 1), { signKind: "toilets" });
   for (const f of w.facilities.values()) {
     if (f.kind !== FacilityKind.Retail) continue;
     f.tenant = tenantAt < 0 ? Tenant.FoodDrink : Tenant.None;
@@ -54,7 +54,7 @@ test("a world saved mid-rush steps identically after loading", () => {
 test("a world saved mid-disruption with a travelator steps identically after loading", () => {
   // The shop stays to let, counting footfall, past the end of the run after loading.
   const a = furnishedWorld(9, MON_0840 + 60);
-  build(a, "travelator", { x: 12, y: 62, w: 1, h: 6 }, { dir: Dir.S });
+  build(a, "travelator", at(12, 62, 1, 6), { dir: Dir.S });
   runMinutes(a, MON_0840 - 35 - START_MINUTE);
   startDisruption(a, [1], 45);
   runMinutes(a, 35); // Mon 08:40, platform 1 closed, a train dwelling at platform 2
@@ -99,10 +99,10 @@ test("refuses an unknown version", () => {
   expect(() => deserialise(JSON.stringify({ ...save, version: 99 }))).toThrow("Unsupported save version");
 });
 
-test("version 1 and 2 saves (narrower islands) are refused", () => {
-  expect(SAVE_VERSION).toBe(3);
+test("saves from before the city map (versions 1 to 3) are refused", () => {
+  expect(SAVE_VERSION).toBe(4);
   const save = JSON.parse(serialise(createWorld(1))) as Record<string, unknown>;
-  for (const version of [1, 2]) expect(() => deserialise(JSON.stringify({ ...save, version }))).toThrow("Unsupported save version");
+  for (const version of [1, 2, 3]) expect(() => deserialise(JSON.stringify({ ...save, version }))).toThrow("Unsupported save version");
 });
 
 test("the world asks for an autosave once per game hour crossed", () => {
@@ -140,7 +140,7 @@ test("each class the save takes apart has only the fields it handles", () => {
 
 test("a world saved and loaded every half hour across a day keeps stepping like the original", () => {
   const a = furnishedWorld(9);
-  build(a, "travelator", { x: 12, y: 62, w: 1, h: 6 }, { dir: Dir.S });
+  build(a, "travelator", at(12, 62, 1, 6), { dir: Dir.S });
   let queued = 0;
   let served = 0;
   for (let k = 0; k < 34; k++) {
@@ -211,7 +211,7 @@ test("the turnstiles are saved from the world, keeping only tiles that are still
   const line = w.map.islands[0]!.gateLine;
   const open = w.grid.idx(line.x + 1, line.y);
   const closed = w.grid.idx(line.x + 2, line.y);
-  const floor = w.grid.idx(10, 60);
+  const floor = w.grid.idx(...st(10, 60));
   w.turnstiles.clock = 12;
   w.turnstiles.nextFree[open] = 12.1;
   w.turnstiles.nextFree[closed] = 11.9;
@@ -220,4 +220,36 @@ test("the turnstiles are saved from the world, keeping only tiles that are still
   expect(saved.clock).toBe(12);
   expect(saved.gates).toEqual([[open, 12.1]]);
   expect(deserialise(serialise(w)).turnstiles.nextFree[open]).toBe(12.1);
+});
+
+test("only the station grounds are saved: the city round it is rebuilt on load", () => {
+  const w = createWorld(1);
+  const save = JSON.parse(serialise(w));
+  const r = w.map.grounds;
+  expect(atob(save.grid.tiles).length).toBe(r.w * r.h);
+  expect(Array.from(deserialise(serialise(w)).grid.tiles)).toEqual(Array.from(w.grid.tiles));
+});
+
+test("gate waits in progress (who waits at which gate, since when, and each gate's queue) survive a save", () => {
+  const a = createWorld(9);
+  runMinutes(a, MON_0815 - START_MINUTE);
+  const ts = a.turnstiles;
+  // Step on through the rush until people stand queued at a gate.
+  for (let k = 0; k < 2000 && ![...ts.queues.values()].some((q) => q.length > 1); k++) step(a, 1 / 60);
+  expect([...ts.queues.values()].some((q) => q.length > 1)).toBe(true);
+  const b = deserialise(serialise(a));
+  const live = (i: number): boolean => ts.waitGate[i]! >= 0 && ts.waitStep[i]! >= ts.step - 1;
+  let waiting = 0;
+  for (let i = 0; i < a.people.end; i++) {
+    if (!live(i)) continue;
+    waiting++;
+    expect(b.turnstiles.waitGate[i]).toBe(ts.waitGate[i]);
+    expect(b.turnstiles.waitSince[i]).toBe(ts.waitSince[i]);
+    expect(b.turnstiles.waitStep[i]).toBe(ts.waitStep[i]);
+  }
+  expect(waiting).toBeGreaterThan(1);
+  expect(new Map(b.turnstiles.queues)).toEqual(new Map(ts.queues));
+  step(a, 1 / 60);
+  step(b, 1 / 60);
+  expect(serialise(b)).toBe(serialise(a));
 });

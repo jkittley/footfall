@@ -4,6 +4,7 @@ import { startDisruption } from "../../src/sim/disruptions";
 import { FacilityKind, Tenant, createFacility } from "../../src/sim/facilities";
 import { deactivatePlatform } from "../../src/sim/growth";
 import { createWorld } from "../../src/sim/world";
+import { at } from "../sim/helpers";
 
 describe("label formatting", () => {
   it("writes clock times as HH:MM within the day", () => {
@@ -65,7 +66,7 @@ describe("label formatting", () => {
 
   it("names a let unit's tenant, or counts down to one moving in", () => {
     const w = createWorld(3);
-    const f = createFacility(w, FacilityKind.Retail, { x: 7, y: 57, w: 2, h: 2 });
+    const f = createFacility(w, FacilityKind.Retail, at(7, 57, 2, 2));
     expect(runsText(retailLabel(f, w.minute))).toBe("To let · tenant in 0:40");
     expect(runsText(retailLabel(f, w.minute + 30))).toBe("To let · tenant in 0:10");
     f.tenant = Tenant.FoodDrink;
@@ -75,7 +76,7 @@ describe("label formatting", () => {
 
   it("has no em-dashes in any label", () => {
     const w = createWorld(3);
-    const f = createFacility(w, FacilityKind.Retail, { x: 7, y: 57, w: 2, h: 2 });
+    const f = createFacility(w, FacilityKind.Retail, at(7, 57, 2, 2));
     for (const runs of [platformLabel(w, 1), platformLabel(w, 2), retailLabel(f, w.minute)])
       expect(runsText(runs)).not.toContain("—");
   });

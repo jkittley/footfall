@@ -104,8 +104,8 @@ function heapPop(): void {
 }
 
 /** Walking distance (in tiles) from every tile to the nearest target; Infinity if unreachable. */
-export function computeField(grid: Grid, targets: readonly number[]): Float32Array {
-  const field = new Float32Array(grid.w * grid.h).fill(Infinity);
+export function computeField(grid: Grid, targets: readonly number[], into?: Float32Array): Float32Array {
+  const field = into && into.length === grid.w * grid.h ? into.fill(Infinity) : new Float32Array(grid.w * grid.h).fill(Infinity);
   heapSize = 0;
   for (const t of targets) {
     if (t < 0 || t >= field.length || field[t] === 0) continue;
@@ -191,7 +191,11 @@ export function walkMinutes(field: Float32Array, tile: number): number {
   return (field[tile]! / WALK_TILES_PER_SEC) * GAME_MIN_PER_REAL_SEC;
 }
 
-/** Caches fields per key for one grid; a key recomputes when that grid's version has moved. */
+/**
+ * Caches fields per key for one grid; a key recomputes when that grid's version has moved, into
+ * its old buffer (a city-sized field is big, and a build makes every key recompute). A field handed
+ * out is therefore only good until the next get of its key.
+ */
 export class FieldCache {
   private readonly entries = new Map<string, { version: number; field: Float32Array }>();
   constructor(private readonly grid: Grid) {}
@@ -199,6 +203,11 @@ export class FieldCache {
   get(key: string, targets: () => readonly number[]): Float32Array {
     const hit = this.entries.get(key);
     if (hit && hit.version === this.grid.version) return hit.field;
+    if (hit) {
+      computeField(this.grid, targets(), hit.field);
+      hit.version = this.grid.version;
+      return hit.field;
+    }
     const field = computeField(this.grid, targets());
     this.entries.set(key, { version: this.grid.version, field });
     return field;

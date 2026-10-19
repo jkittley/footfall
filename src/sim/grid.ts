@@ -11,6 +11,16 @@ export enum Tile {
   Gate = 8,
   /** A closed-off slot in a gate line. */
   GateClosed = 9,
+  /** The city's river and harbour: unwalkable, unbuildable. */
+  Water = 10,
+  /** Parks: unwalkable, unbuildable. */
+  Park = 11,
+  /** Roads (people walk only on pavements): unwalkable, unbuildable. */
+  Road = 12,
+  /** A later stage's site, under a haze until it opens: unwalkable, unbuildable. */
+  Locked = 13,
+  /** Pavements to the entrances, the footbridge and bridge pavements: walkable, unbuildable. */
+  Pavement = 14,
 }
 
 export enum Zone {
@@ -97,7 +107,7 @@ export class Grid {
   isWalkable(x: number, y: number): boolean {
     if (!this.inBounds(x, y)) return false;
     const t = this.tile(x, y);
-    if (t !== Tile.Floor && t !== Tile.Platform && t !== Tile.Entrance && t !== Tile.Gate) return false;
+    if (t !== Tile.Floor && t !== Tile.Platform && t !== Tile.Entrance && t !== Tile.Gate && t !== Tile.Pavement) return false;
     const z = this.zone(x, y);
     return z === Zone.None || z === Zone.Seating || z === Zone.Travelator;
   }

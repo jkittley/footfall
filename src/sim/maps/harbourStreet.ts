@@ -1,4 +1,5 @@
 import { Grid, Tile, type Rect } from "../grid";
+import { CITY, rasterise } from "./city";
 
 /** One island: a shared walkway with a track either side, and a foot joining it to the concourse. */
 export interface IslandDef {
@@ -30,6 +31,8 @@ export interface EntranceDef {
   name: string;
   tiles: Rect;
   weight: number;
+  /** The side of the station it opens onto, where its pavement (or the footbridge) leads off. */
+  faces: "N" | "E" | "S" | "W";
 }
 
 export interface ObstacleDef {
@@ -39,14 +42,21 @@ export interface ObstacleDef {
 
 export interface StationMap {
   name: "Harbour Street";
-  w: 120;
-  h: 90;
+  /** The station's footprint in the city: its own ground, the only place floor may be built. */
+  grounds: Rect;
   startingPlatforms: 2;
   islands: IslandDef[];
   slots: PlatformSlot[];
   entrances: EntranceDef[];
   obstacles: ObstacleDef[];
   startingFloor: Rect[];
+}
+
+const [OX, OY] = CITY.station.origin;
+
+/** A rect given in the station's own coordinates (0..119, 0..89), placed in the city. */
+function at(x: number, y: number, w: number, h: number): Rect {
+  return { x: OX + x, y: OY + y, w, h };
 }
 
 const PLATFORM_TOP = 24;
@@ -57,12 +67,12 @@ function makeIsland(id: number): IslandDef {
   const x0 = 8 + 8 * (id - 1);
   return {
     id,
-    walkway: { x: x0 + 1, y: PLATFORM_TOP, w: 5, h: PLATFORM_LEN },
-    leftTrack: { x: x0, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
-    rightTrack: { x: x0 + 6, y: PLATFORM_TOP, w: 1, h: PLATFORM_LEN },
+    walkway: at(x0 + 1, PLATFORM_TOP, 5, PLATFORM_LEN),
+    leftTrack: at(x0, PLATFORM_TOP, 1, PLATFORM_LEN),
+    rightTrack: at(x0 + 6, PLATFORM_TOP, 1, PLATFORM_LEN),
     // Spans the gap column too, so neighbouring aprons join into one concourse.
-    foot: { x: x0, y: CONCOURSE_TOP, w: 8, h: 2 },
-    gateLine: { x: x0 + 1, y: CONCOURSE_TOP - 1, w: 5, h: 1 },
+    foot: at(x0, CONCOURSE_TOP, 8, 2),
+    gateLine: at(x0 + 1, CONCOURSE_TOP - 1, 5, 1),
   };
 }
 
@@ -77,56 +87,47 @@ function makeSlot(id: number): PlatformSlot {
     island: island.id,
     side: left ? "left" : "right",
     track: left ? island.leftTrack : island.rightTrack,
-    platform: { x: half, y: PLATFORM_TOP, w: 2, h: PLATFORM_LEN },
+    platform: { x: half, y: island.walkway.y, w: 2, h: PLATFORM_LEN },
     foot: island.foot,
   };
 }
 
-// The island field (every island's tracks, walkway and foot, x 8..79) stays obstacle-free so
-// platforms can be painted later. Rows 22-23 are a Ground buffer between the
-// track bed and the platform tops. Pinch points sit east of the field (x 84..95)
-// and at the canal crossing: the route to Quay Lane must use each of them.
+// In station coordinates. The island field (every island's tracks, walkway and foot, x 8..79) stays
+// obstacle-free so platforms can be painted later. Rows 22-23 are a Ground buffer between the track
+// bed and the platform tops. East of the field the route to the footbridge must take each pinch
+// point: between the goods shed and the coal wharf sidings (rows 56-58), the gap in the signal
+// works (rows 44-46), and the neck between the river and Riverside Gardens (x 96-101, rows 56-59).
+// The river, the gardens and Harbour Road (rows 82-88) come from the city map.
 const OBSTACLES: ObstacleDef[] = [
-  { name: "Track bed (north throat)", rect: { x: 6, y: 0, w: 76, h: 22 } },
-  { name: "Neighbouring offices", rect: { x: 0, y: 20, w: 5, h: 30 } },
-  { name: "St Mary's Church (listed)", rect: { x: 0, y: 62, w: 7, h: 14 } },
-  { name: "The Old Customs House (listed)", rect: { x: 20, y: 64, w: 14, h: 10 } },
-  { name: "Fish market hall", rect: { x: 38, y: 64, w: 12, h: 10 } },
-  { name: "Pilot's Row terraces", rect: { x: 53, y: 66, w: 10, h: 12 } },
-  { name: "Chandlery", rect: { x: 66, y: 66, w: 8, h: 12 } },
-  { name: "Bus lane", rect: { x: 54, y: 62, w: 30, h: 3 } },
-  { name: "Harbour Road", rect: { x: 0, y: 80, w: 120, h: 10 } },
-  { name: "Coal depot", rect: { x: 84, y: 4, w: 10, h: 18 } },
-  { name: "Goods shed", rect: { x: 84, y: 22, w: 4, h: 34 } },
-  { name: "Coal wharf sidings", rect: { x: 84, y: 59, w: 4, h: 21 } },
-  { name: "Signal works (north)", rect: { x: 90, y: 22, w: 3, h: 22 } },
-  { name: "Signal works (south)", rect: { x: 90, y: 47, w: 3, h: 33 } },
-  { name: "Station Master's House (listed)", rect: { x: 30, y: 57, w: 8, h: 5 } },
-  { name: "Left luggage office", rect: { x: 52, y: 57, w: 6, h: 4 } },
-  { name: "Ashby Canal (north reach)", rect: { x: 96, y: 0, w: 6, h: 56 } },
-  { name: "Ashby Canal (south reach)", rect: { x: 96, y: 60, w: 6, h: 20 } },
-  { name: "Quay warehouse", rect: { x: 104, y: 20, w: 12, h: 20 } },
-  { name: "Customs yard", rect: { x: 104, y: 64, w: 12, h: 10 } },
+  { name: "Track bed", rect: at(6, 0, 76, 22) },
+  { name: "Neighbouring offices", rect: at(0, 20, 5, 30) },
+  { name: "The Old Customs House (listed)", rect: at(20, 64, 14, 10) },
+  { name: "Fish market hall", rect: at(38, 64, 12, 10) },
+  { name: "Pilot's Row terraces", rect: at(53, 66, 10, 12) },
+  { name: "Chandlery", rect: at(66, 66, 8, 12) },
+  { name: "Bus lane", rect: at(54, 62, 30, 3) },
+  { name: "Coal depot", rect: at(84, 4, 10, 18) },
+  { name: "Goods shed", rect: at(84, 22, 4, 34) },
+  { name: "Coal wharf sidings", rect: at(84, 59, 4, 23) },
+  { name: "Signal works (north)", rect: at(90, 22, 3, 22) },
+  { name: "Signal works (south)", rect: at(90, 47, 3, 35) },
+  { name: "Station Master's House (listed)", rect: at(30, 57, 8, 5) },
+  { name: "Left luggage office", rect: at(52, 57, 6, 4) },
 ];
 
 export const HARBOUR_STREET: StationMap = {
   name: "Harbour Street",
-  w: 120,
-  h: 90,
+  grounds: CITY.station.grounds,
   startingPlatforms: 2,
   islands: ISLANDS,
   slots: Array.from({ length: 18 }, (_, i) => makeSlot(i + 1)),
   entrances: [
-    { id: "A", name: "Harbour Road", tiles: { x: 9, y: 79, w: 4, h: 1 }, weight: 3 },
-    { id: "B", name: "Market Place", tiles: { x: 0, y: 55, w: 1, h: 3 }, weight: 2 },
-    { id: "C", name: "Quay Lane", tiles: { x: 119, y: 55, w: 1, h: 4 }, weight: 2 },
+    { id: "A", name: "Harbour Road", tiles: at(9, 79, 4, 1), weight: 3, faces: "S" },
+    { id: "B", name: "Market Street", tiles: at(0, 55, 1, 3), weight: 2, faces: "W" },
+    { id: "C", name: "Footbridge", tiles: at(119, 55, 1, 4), weight: 2, faces: "E" },
   ],
   obstacles: OBSTACLES,
-  startingFloor: [
-    { x: 6, y: CONCOURSE_TOP + 2, w: 10, h: 4 },
-    { x: 9, y: 60, w: 4, h: 19 },
-    { x: 1, y: 55, w: 5, h: 3 },
-  ],
+  startingFloor: [at(6, CONCOURSE_TOP + 2, 10, 4), at(9, 60, 4, 19), at(1, 55, 5, 3)],
 };
 
 function fill(grid: Grid, r: Rect, t: Tile): void {
@@ -178,8 +179,9 @@ export function paintSlot(grid: Grid, slot: PlatformSlot): void {
   if (!isIslandPainted(grid, island)) paintIsland(grid, island);
 }
 
+/** The city with the station painted on top: its obstacles, starting floor, entrances and the platforms added. */
 export function buildGrid(map: StationMap, platformsAdded: number): Grid {
-  const g = new Grid(map.w, map.h);
+  const g = rasterise(CITY);
   for (const o of map.obstacles) fill(g, o.rect, Tile.Obstacle);
   for (const r of map.startingFloor) fill(g, r, Tile.Floor);
   for (const e of map.entrances) fill(g, e.tiles, Tile.Entrance);

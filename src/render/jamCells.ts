@@ -1,4 +1,5 @@
 import { CALM_DENSITY, JAM_DENSITY } from "../sim/constants";
+import type { Rect } from "../sim/grid";
 
 /** Crowding is judged per square cell of this many tiles a side. */
 export const CELL_TILES = 4;
@@ -26,21 +27,28 @@ let rowSums = new Float32Array(0);
 
 /**
  * Each cell's highest 3x3 density (CrowdGrid.density: the mean over the 3x3 block, off-grid tiles
- * empty) over its tiles, into `out` (cells row-major, ceil(w / CELL_TILES) across).
+ * empty) over its tiles, into `out` (cells row-major, ceil(w / CELL_TILES) across). Only the cells
+ * over `area` (the whole grid by default) are worked out; the rest are 0, so a big map costs only
+ * the part people can stand on.
  */
-export function cellPeaks(counts: ArrayLike<number>, w: number, h: number, out: Float32Array): void {
+export function cellPeaks(counts: ArrayLike<number>, w: number, h: number, out: Float32Array, area?: Rect): void {
+  const cw = Math.ceil(w / CELL_TILES);
+  out.fill(0);
+  // Whole cells over the area, plus a row and column of tiles round it for the 3x3 sums.
+  const x0 = area ? Math.max(0, Math.floor(area.x / CELL_TILES) * CELL_TILES) : 0;
+  const y0 = area ? Math.max(0, Math.floor(area.y / CELL_TILES) * CELL_TILES) : 0;
+  const x1 = area ? Math.min(w, Math.ceil((area.x + area.w) / CELL_TILES) * CELL_TILES) : w;
+  const y1 = area ? Math.min(h, Math.ceil((area.y + area.h) / CELL_TILES) * CELL_TILES) : h;
   if (rowSums.length < w * h) rowSums = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
+  for (let y = Math.max(0, y0 - 1); y < Math.min(h, y1 + 1); y++) {
     const r = y * w;
-    for (let x = 0; x < w; x++) {
+    for (let x = x0; x < x1; x++) {
       rowSums[r + x] = (x > 0 ? counts[r + x - 1]! : 0) + counts[r + x]! + (x < w - 1 ? counts[r + x + 1]! : 0);
     }
   }
-  const cw = Math.ceil(w / CELL_TILES);
-  out.fill(0);
-  for (let y = 0; y < h; y++) {
+  for (let y = y0; y < y1; y++) {
     const rowCell = Math.floor(y / CELL_TILES) * cw;
-    for (let x = 0; x < w; x++) {
+    for (let x = x0; x < x1; x++) {
       const i = y * w + x;
       const sum = (y > 0 ? rowSums[i - w]! : 0) + rowSums[i]! + (y < h - 1 ? rowSums[i + w]! : 0);
       const c = rowCell + Math.floor(x / CELL_TILES);
@@ -65,7 +73,7 @@ export class JamTracker {
   belowMin = new Float32Array(0);
   private lastMinute: number | null = null;
 
-  update(counts: ArrayLike<number>, w: number, h: number, minute: number): void {
+  update(counts: ArrayLike<number>, w: number, h: number, minute: number, area?: Rect): void {
     const cw = Math.ceil(w / CELL_TILES);
     const ch = Math.ceil(h / CELL_TILES);
     if (cw !== this.cw || ch !== this.ch) {
@@ -76,7 +84,7 @@ export class JamTracker {
       this.belowMin = new Float32Array(cw * ch);
       this.lastMinute = null;
     }
-    cellPeaks(counts, w, h, this.peak);
+    cellPeaks(counts, w, h, this.peak, area);
     let dt = this.lastMinute === null ? 0 : minute - this.lastMinute;
     if (dt < 0 || dt > MAX_GAP_MIN) {
       this.reset();

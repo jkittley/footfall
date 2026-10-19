@@ -123,6 +123,7 @@ test("dailyUpkeep totals a hand-built grid from the rates", () => {
   const w = createWorld(1);
   const g = new Grid(5, 2);
   w.grid = g;
+  w.map = { ...w.map, grounds: { x: 0, y: 0, w: 5, h: 2 } };
   const row = [Tile.Floor, Tile.Platform, Tile.Entrance, Tile.Wall, Tile.Rail];
   row.forEach((t, x) => g.setTile(x, 0, t));
   g.setTile(0, 1, Tile.Track);
@@ -189,6 +190,7 @@ test("gate upkeep is counted", () => {
   const w = createWorld(1);
   const g = new Grid(3, 1);
   w.grid = g;
+  w.map = { ...w.map, grounds: { x: 0, y: 0, w: 3, h: 1 } };
   g.setTile(0, 0, Tile.Gate);
   g.setTile(1, 0, Tile.Gate);
   g.setTile(2, 0, Tile.GateClosed);
