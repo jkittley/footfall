@@ -3,9 +3,11 @@ import {
   CELL_TILES,
   CROWDED_DENSITY,
   CrowdClass,
+  JAM_HOLD_MIN,
   JAM_RING_FULL_MIN,
   JamTracker,
   cellPeaks,
+  jamClusters,
 } from "../../src/render/jamCells";
 import { JAM_DENSITY } from "../../src/sim/constants";
 import { CrowdGrid } from "../../src/sim/crowd";
@@ -58,17 +60,33 @@ describe("JamTracker", () => {
     expect(t.ringFill(0)).toBe(1);
   });
 
-  it("drains while merely crowded and clears once calm", () => {
+  it("drains three times as fast while merely crowded, holds Jam about a minute below jam density, and clears once calm", () => {
     const t = new JamTracker();
     const jam = packed(Math.ceil(JAM_DENSITY));
     const crowded = packed(Math.ceil(CROWDED_DENSITY));
     for (let m = 0; m <= 4; m++) t.update(jam, W, H, m);
-    t.update(crowded, W, H, 6);
+    t.update(crowded, W, H, 4.5);
     expect(t.classOf(0)).toBe(CrowdClass.Jam);
-    expect(t.ringFill(0)).toBeCloseTo(2 / JAM_RING_FULL_MIN, 6);
-    t.update(packed(0), W, H, 6.5);
+    expect(t.ringFill(0)).toBeCloseTo((4 - 3 * 0.5) / JAM_RING_FULL_MIN, 6);
+    t.update(crowded, W, H, 4.5 + JAM_HOLD_MIN + 0.1);
+    expect(t.classOf(0)).toBe(CrowdClass.Crowded);
+    expect(t.ringFill(0)).toBe(0);
+    t.update(jam, W, H, 5.7);
+    expect(t.classOf(0)).toBe(CrowdClass.Crowded);
+    t.update(packed(0), W, H, 6);
     expect(t.classOf(0)).toBe(CrowdClass.Calm);
-    t.update(jam, W, H, 7);
+    t.update(jam, W, H, 6.5);
+    expect(t.classOf(0)).toBe(CrowdClass.Crowded);
+  });
+
+  it("starts afresh on reset", () => {
+    const t = new JamTracker();
+    const jam = packed(Math.ceil(JAM_DENSITY));
+    t.update(jam, W, H, 0);
+    t.update(jam, W, H, 3);
+    expect(t.classOf(0)).toBe(CrowdClass.Jam);
+    t.reset();
+    t.update(jam, W, H, 3.5);
     expect(t.classOf(0)).toBe(CrowdClass.Crowded);
   });
 
@@ -95,5 +113,36 @@ describe("JamTracker", () => {
     expect(t.classOf(0)).toBe(CrowdClass.Calm);
     t.update(packed(1), W, H, 0);
     expect(t.classOf(0)).toBe(CrowdClass.Busy);
+  });
+});
+
+describe("jamClusters", () => {
+  /** A 5 x 4 cell grid with the given cells jammed (fill = jam minutes / JAM_RING_FULL_MIN). */
+  function grid(jammed: Record<number, number>): { cw: number; ch: number; fill: (c: number) => number } {
+    return { cw: 5, ch: 4, fill: (c) => jammed[c] ?? -1 };
+  }
+
+  it("merges touching jam cells (edges or corners) into one, at their centroid, filled by the fullest", () => {
+    // Cells (1,1), (2,1) and (3,2): a chain through a corner.
+    const out = jamClusters(grid({ 6: 0.2, 7: 0.7, 13: 0.4 }));
+    expect(out).toHaveLength(1);
+    const c = out[0]!;
+    expect(c.x).toBeCloseTo(((1.5 + 2.5 + 3.5) / 3) * CELL_TILES, 6);
+    expect(c.y).toBeCloseTo(((1.5 + 1.5 + 2.5) / 3) * CELL_TILES, 6);
+    expect(c.fill).toBe(0.7);
+    expect(c.extent).toBeCloseTo(Math.max(...[[1.5, 1.5], [2.5, 1.5], [3.5, 2.5]].map(([x, y]) => Math.hypot(x! * CELL_TILES - c.x, y! * CELL_TILES - c.y))), 6);
+  });
+
+  it("keeps cells apart that do not touch, and a lone cell has no extent", () => {
+    const out = jamClusters(grid({ 0: 0.1, 2: 0.5, 19: 1 }));
+    expect(out).toHaveLength(3);
+    const lone = out.find((c) => c.fill === 0.5)!;
+    expect(lone.x).toBeCloseTo(2.5 * CELL_TILES, 6);
+    expect(lone.y).toBeCloseTo(0.5 * CELL_TILES, 6);
+    expect(lone.extent).toBe(0);
+  });
+
+  it("counts a jammed cell whose ring is still empty", () => {
+    expect(jamClusters({ cw: 2, ch: 1, fill: (c) => (c === 0 ? 0 : -1) })).toHaveLength(1);
   });
 });

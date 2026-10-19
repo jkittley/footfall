@@ -38,19 +38,28 @@ export function runsText(runs: readonly Run[]): string {
  * Closed" when inactive, "Platform 3 · Closed until 11:20" while a disruption holds it.
  */
 export function platformLabel(w: World, slotId: number): Run[] {
+  return platformLabelVariants(w, slotId)[0]!;
+}
+
+/**
+ * The platform label, longest first, then shorter ones for a cramped view: without the
+ * destination, then without the time, then the name alone. The countdown is only ever dropped
+ * whole, with everything else.
+ */
+export function platformLabelVariants(w: World, slotId: number): Run[][] {
   const head: Run = { text: `Platform ${slotId}`, strong: true };
-  if (!w.platformActive[slotId - 1]) return [head, SEP, { text: "Closed" }];
+  if (!w.platformActive[slotId - 1]) return [[head, SEP, { text: "Closed" }], [head]];
   const d = w.disruptions.find((x) => !x.ended && x.platforms.includes(slotId));
-  if (d) return [head, SEP, { text: "Closed until " }, { text: clockTime(d.endsAt), mono: true }];
+  if (d) return [[head, SEP, { text: "Closed until " }, { text: clockTime(d.endsAt), mono: true }], [head]];
   const next = w.timetable.upcoming(slotId, w.minute)[0];
-  if (!next) return [head, SEP, { text: "No trains", muted: true }];
+  if (!next) return [[head, SEP, { text: "No trains", muted: true }], [head]];
+  const time: Run = { text: clockTime(next.departAt), mono: true };
+  const left: Run = { text: countdown(next.departAt - w.minute), mono: true };
   return [
-    head,
-    SEP,
-    { text: clockTime(next.departAt), mono: true },
-    { text: ` ${next.destination}` },
-    SEP,
-    { text: countdown(next.departAt - w.minute), mono: true },
+    [head, SEP, time, { text: ` ${next.destination}` }, SEP, left],
+    [head, SEP, time, SEP, left],
+    [head, SEP, left],
+    [head],
   ];
 }
 
@@ -59,23 +68,4 @@ export function retailLabel(f: Facility, minute: number): Run[] {
   if (f.tenant !== Tenant.None) return [{ text: TENANTS[f.tenant].name, strong: true }];
   if (f.tenantAt < 0) return [{ text: "To let", strong: true }];
   return [{ text: "To let", strong: true }, SEP, { text: "tenant in ", muted: true }, { text: countdown(f.tenantAt - minute), mono: true, muted: true }];
-}
-
-export interface StaticLayerInputs {
-  /** Grid.version: every tile, zone and direction change bumps it, facilities included. */
-  version: number;
-  x: number;
-  y: number;
-  zoom: number;
-  /** Backing store size in device px. */
-  width: number;
-  height: number;
-  dpr: number;
-  /** Bumped when the web fonts finish loading, so labels first drawn in a fallback face are redrawn. */
-  fonts: number;
-}
-
-/** The static layer is redrawn exactly when this changes. */
-export function staticLayerKey(k: StaticLayerInputs): string {
-  return `${k.version}|${k.x}|${k.y}|${k.zoom}|${k.width}|${k.height}|${k.dpr}|${k.fonts}`;
 }

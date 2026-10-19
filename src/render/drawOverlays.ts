@@ -1,7 +1,7 @@
 import type { PlacementPreview } from "../sim/build";
 import { Mode } from "../sim/people";
 import type { World } from "../sim/world";
-import { CELL_TILES, CrowdClass, type JamTracker } from "./jamCells";
+import { CELL_TILES, CrowdClass, jamClusters, type JamTracker } from "./jamCells";
 import { ALERT, CIRCLE, GLOW_CROWDED, GLOW_JAM, INK, MODE_COLOURS, RING_BACK, rgba, type Rgba } from "./palette";
 import { routeOf, type Pt } from "./route";
 import { sx, sy, type View } from "./view";
@@ -15,39 +15,39 @@ const RING_STROKE = 4;
 /** The jam glow breathes like the gameplay board's halo. */
 const PULSE_MS = 1600;
 
-/** Orange glows on crowded cells; red glows and filling rings on jammed ones. Drawn under people. */
+/**
+ * Orange glows on crowded cells; one red glow and filling ring per jam (touching jammed cells
+ * merge, the glow and ring growing with the jam's reach). Drawn under people.
+ */
 export function drawCrowding(ctx: CanvasRenderingContext2D, jam: JamTracker, v: View, nowMs: number): void {
-  const pulse = 0.94 + 0.06 * Math.sin((nowMs / PULSE_MS) * 2 * Math.PI);
-  const rings: [number, number, number][] = [];
   for (let cy = 0; cy < jam.ch; cy++) {
     const ty = (cy + 0.5) * CELL_TILES;
-    if (ty + JAM_GLOW_R < v.y0 || ty - JAM_GLOW_R > v.y1) continue;
+    if (ty + CROWDED_GLOW_R < v.y0 || ty - CROWDED_GLOW_R > v.y1) continue;
     for (let cx = 0; cx < jam.cw; cx++) {
       const tx = (cx + 0.5) * CELL_TILES;
-      if (tx + JAM_GLOW_R < v.x0 || tx - JAM_GLOW_R > v.x1) continue;
-      const c = cy * jam.cw + cx;
-      const cls = jam.classOf(c);
-      if (cls === CrowdClass.Crowded) glow(ctx, sx(v, tx), sy(v, ty), CROWDED_GLOW_R * v.s, GLOW_CROWDED);
-      else if (cls === CrowdClass.Jam) {
-        glow(ctx, sx(v, tx), sy(v, ty), JAM_GLOW_R * v.s * pulse, GLOW_JAM);
-        rings.push([tx, ty, jam.ringFill(c)]);
-      }
+      if (tx + CROWDED_GLOW_R < v.x0 || tx - CROWDED_GLOW_R > v.x1) continue;
+      if (jam.classOf(cy * jam.cw + cx) === CrowdClass.Crowded) glow(ctx, sx(v, tx), sy(v, ty), CROWDED_GLOW_R * v.s, GLOW_CROWDED);
     }
   }
-  const stroke = Math.max(2.5, RING_STROKE * v.cam.zoom);
-  ctx.lineWidth = stroke;
+
+  const clusters = jamClusters({ cw: jam.cw, ch: jam.ch, fill: (c) => (jam.classOf(c) === CrowdClass.Jam ? jam.ringFill(c) : -1) });
+  const pulse = 0.94 + 0.06 * Math.sin((nowMs / PULSE_MS) * 2 * Math.PI);
+  ctx.lineWidth = Math.max(2.5, RING_STROKE * v.cam.zoom);
   ctx.lineCap = "round";
-  for (const [tx, ty, fill] of rings) {
-    const X = sx(v, tx);
-    const Y = sy(v, ty);
-    const r = RING_R * v.s;
+  for (const c of clusters) {
+    const reach = JAM_GLOW_R + c.extent;
+    if (c.x + reach < v.x0 || c.x - reach > v.x1 || c.y + reach < v.y0 || c.y - reach > v.y1) continue;
+    const X = sx(v, c.x);
+    const Y = sy(v, c.y);
+    glow(ctx, X, Y, reach * v.s * pulse, GLOW_JAM);
+    const r = (RING_R + c.extent) * v.s;
     ctx.beginPath();
     ctx.arc(X, Y, r, 0, Math.PI * 2);
     ctx.strokeStyle = RING_BACK;
     ctx.stroke();
-    if (fill <= 0) continue;
+    if (c.fill <= 0) continue;
     ctx.beginPath();
-    ctx.arc(X, Y, r, -Math.PI / 2, -Math.PI / 2 + fill * Math.PI * 2);
+    ctx.arc(X, Y, r, -Math.PI / 2, -Math.PI / 2 + c.fill * Math.PI * 2);
     ctx.strokeStyle = ALERT;
     ctx.stroke();
   }

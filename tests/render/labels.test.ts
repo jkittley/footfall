@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockTime, countdown, platformLabel, retailLabel, runsText, staticLayerKey } from "../../src/render/labels";
+import { clockTime, countdown, platformLabel, platformLabelVariants, retailLabel, runsText } from "../../src/render/labels";
 import { startDisruption } from "../../src/sim/disruptions";
 import { FacilityKind, Tenant, createFacility } from "../../src/sim/facilities";
 import { deactivatePlatform } from "../../src/sim/growth";
@@ -35,6 +35,20 @@ describe("label formatting", () => {
     expect(runsText(platformLabel(w2, 1))).toBe(`Platform 1 · Closed until ${clockTime(d.endsAt)}`);
   });
 
+  it("offers shorter labels that drop the destination, then the time, keeping the countdown whole", () => {
+    const w = createWorld(3);
+    const next = w.timetable.upcoming(1, w.minute)[0]!;
+    const cd = countdown(next.departAt - w.minute);
+    expect(platformLabelVariants(w, 1).map(runsText)).toEqual([
+      `Platform 1 · ${clockTime(next.departAt)} ${next.destination} · ${cd}`,
+      `Platform 1 · ${clockTime(next.departAt)} · ${cd}`,
+      `Platform 1 · ${cd}`,
+      "Platform 1",
+    ]);
+    deactivatePlatform(w, 2);
+    expect(platformLabelVariants(w, 2).map(runsText)).toEqual(["Platform 2 · Closed", "Platform 2"]);
+  });
+
   it("puts numbers and times in mono runs", () => {
     const w = createWorld(3);
     const runs = platformLabel(w, 1);
@@ -58,15 +72,5 @@ describe("label formatting", () => {
     const f = createFacility(w, FacilityKind.Retail, { x: 7, y: 57, w: 2, h: 2 });
     for (const runs of [platformLabel(w, 1), platformLabel(w, 2), retailLabel(f, w.minute)])
       expect(runsText(runs)).not.toContain("—");
-  });
-});
-
-describe("staticLayerKey", () => {
-  const base = { version: 7, x: 1.5, y: -2, zoom: 1, width: 800, height: 600, dpr: 2, fonts: 0 };
-  it("is stable for the same inputs and changes when any of them does", () => {
-    expect(staticLayerKey(base)).toBe(staticLayerKey({ ...base }));
-    for (const k of Object.keys(base) as (keyof typeof base)[]) {
-      expect(staticLayerKey({ ...base, [k]: base[k] + 1 })).not.toBe(staticLayerKey(base));
-    }
   });
 });

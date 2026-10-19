@@ -43,13 +43,10 @@ export function startDebugRender(canvas: HTMLCanvasElement): void {
   }
   // Stress: ?extra=5000 stands that many more people on random walkable tiles.
   const extra = Number(params.get("extra") ?? 0);
-  for (let k = 0; k < extra; k++) {
-    const x = w.rng.int(0, w.grid.w - 1);
-    const y = w.rng.int(0, w.grid.h - 1);
-    if (!w.grid.isWalkable(x, y)) {
-      k--;
-      continue;
-    }
+  const open: number[] = [];
+  for (let t = 0; t < w.grid.w * w.grid.h; t++) if (w.grid.isWalkable(t % w.grid.w, Math.floor(t / w.grid.w))) open.push(t);
+  for (let k = 0; k < extra && open.length > 0; k++) {
+    const [x, y] = w.grid.xy(w.rng.pick(open));
     const i = w.people.alloc();
     w.people.x[i] = x + w.rng.next();
     w.people.y[i] = y + w.rng.next();

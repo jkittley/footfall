@@ -1,7 +1,7 @@
 import { FacilityKind, type Facility } from "../sim/facilities";
 import { Dir, Tile, Zone, type Grid, type Rect } from "../sim/grid";
 import type { World } from "../sim/world";
-import { platformLabel, retailLabel, type Run } from "./labels";
+import { platformLabelVariants, retailLabel, type Run } from "./labels";
 import { CIRCLE, DOT, FLOOR, GROUND, INK, INK_2, SQUARE, TRACK, WALL } from "./palette";
 import { clamp, drawRuns, runsWidth, uiFont, wrapWords } from "./text";
 import { rectInView, snap, sx, sy, type View } from "./view";
@@ -572,7 +572,9 @@ function drawClosedPlatforms(ctx: CanvasRenderingContext2D, w: World, v: View): 
     const r = union(slot.track, slot.platform);
     if (!rectInView(v, r.x, r.y, r.w, r.h)) continue;
     const [x, y, ww, hh] = rectPx(v, r);
-    ctx.fillRect(x, y, ww, hh);
+    // Inset past the half of a boundary wall that lies inside, so the walls keep their full ink.
+    const inset = lw(v, 4, 2) / 2;
+    ctx.fillRect(x + inset, y + inset, ww - 2 * inset, hh - 2 * inset);
   }
   ctx.globalAlpha = 1;
 }
@@ -585,9 +587,11 @@ function drawPlatformLabels(ctx: CanvasRenderingContext2D, w: World, v: View): v
     if (!rectInView(v, r.x, r.y, r.w, r.h)) continue;
     const [x, y, ww, hh] = rectPx(v, r);
     if (ww < size + 2) continue;
-    const runs = platformLabel(w, slot.id);
     const marker = size * 0.4;
     const start = 0.5 * v.s;
+    const room = hh - start - marker * 2 - size * 0.5 - 4;
+    const runs = platformLabelVariants(w, slot.id).find((r) => runsWidth(ctx, r, size) <= room);
+    if (!runs) continue;
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, y, ww, hh);
