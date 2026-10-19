@@ -35,12 +35,14 @@ export class CrowdGrid {
     return this.counts[i]!;
   }
 
-  /** Mean count over the 3x3 block centred on (x, y); tiles off the grid count as empty. */
-  density(x: number, y: number): number {
+  /** Mean count over the 3x3 block centred on tile (tx, ty), floored; tiles off the grid count as empty. */
+  density(tx: number, ty: number): number {
+    const cx = Math.floor(tx);
+    const cy = Math.floor(ty);
     let sum = 0;
-    for (let yy = y - 1; yy <= y + 1; yy++) {
+    for (let yy = cy - 1; yy <= cy + 1; yy++) {
       if (yy < 0 || yy >= this.h) continue;
-      for (let xx = x - 1; xx <= x + 1; xx++) {
+      for (let xx = cx - 1; xx <= cx + 1; xx++) {
         if (xx < 0 || xx >= this.w) continue;
         sum += this.counts[yy * this.w + xx]!;
       }

@@ -2,7 +2,7 @@ import { Dir, Grid, Zone } from "./grid";
 import { TRAVELATOR_COST, WALK_TILES_PER_SEC } from "./constants";
 import { CrowdGrid, speedFactor } from "./crowd";
 import { PState, type PeopleStore } from "./people";
-import { bestNeighbour, type FieldCache } from "./routeField";
+import { nextStep, type FieldCache } from "./routeField";
 
 /** No sub-step moves further than this (tiles), so a large dt cannot jump a wall. */
 const MAX_SUBSTEP = 0.4;
@@ -57,7 +57,7 @@ function canMove(grid: Grid, ax: number, ay: number, bx: number, by: number): bo
  * Moves every Walking person for `dtReal` real seconds and returns the indices that are at their
  * targetKey (they keep state Walking; the caller decides what happens next).
  *
- * Field keys follow bestNeighbour toward the next tile's centre; arrival is standing on a tile
+ * Field keys follow nextStep toward the next tile's centre; arrival is standing on a tile
  * whose field value is 0. `spot:<tileIdx>` keys steer straight at that tile's centre, sliding along
  * one axis when the straight move is blocked; arrival is being within SPOT_ARRIVE_DIST of the centre.
  * Speed comes from `crowd` as passed in (the caller rebuilds it); the walker counts in its own tile.
@@ -108,7 +108,7 @@ export function stepMovement(
       for (let iter = 0; iter < maxIter; iter++) {
         const dx = sx - px;
         const dy = sy - py;
-        const dist = Math.hypot(dx, dy);
+        const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist <= SPOT_ARRIVE_DIST) {
           arrived.push(i);
           break;
@@ -140,18 +140,15 @@ export function stepMovement(
           break;
         }
         if (time <= EPS_TIME) break;
-        let n = bestNeighbour(grid, field, tx, ty, crowdAt);
-        // Crowding may divert a walker onto another tile that still gets closer, never back:
-        // a retreat would just walk it forward again next sub-step and stall it at the crowd's edge.
-        if (n >= 0 && !(field[n]! < field[here]!)) n = bestNeighbour(grid, field, tx, ty);
+        const n = nextStep(grid, field, tx, ty, crowdAt);
         if (n < 0) break;
         const nx = n % w;
         const ny = (n - nx) / w;
-        // The segment from anywhere in this tile to the centre of a neighbour bestNeighbour allows
+        // The segment from anywhere in this tile to the centre of a neighbour nextStep allows
         // stays inside walkable tiles, and fround keeps each point between two Float32 endpoints.
         const dx = nx + 0.5 - px;
         const dy = ny + 0.5 - py;
-        const dist = Math.hypot(dx, dy);
+        const dist = Math.sqrt(dx * dx + dy * dy);
         const speed = riding(grid, here, nx - tx, ny - ty) ? base / TRAVELATOR_COST : base;
         const move = Math.min(MAX_SUBSTEP, speed * time, dist);
         px = Math.fround(px + (dx / dist) * move);

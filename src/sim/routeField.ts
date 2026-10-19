@@ -155,6 +155,25 @@ export function bestNeighbour(
   return best;
 }
 
+/**
+ * The tile a walker at (x, y) actually steps to: bestNeighbour's crowd-weighted choice, unless that
+ * would not get closer to the target, in which case the plain shortest-route neighbour. Crowding may
+ * divert a walker sideways but never back, since a retreat would be undone next step and leave it
+ * ping-ponging at the crowd's edge. Returns -1 when no neighbour has a finite route.
+ */
+export function nextStep(
+  grid: Grid,
+  field: Float32Array,
+  x: number,
+  y: number,
+  crowdAt?: (i: number) => number,
+  densityWeight: number = DENSITY_WEIGHT,
+): number {
+  const n = bestNeighbour(grid, field, x, y, crowdAt, densityWeight);
+  if (n < 0 || !crowdAt || field[n]! < field[y * grid.w + x]!) return n;
+  return bestNeighbour(grid, field, x, y);
+}
+
 export function walkMinutes(field: Float32Array, tile: number): number {
   return (field[tile]! / WALK_TILES_PER_SEC) * GAME_MIN_PER_REAL_SEC;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { Dir, Tile, Zone } from "../../src/sim/grid";
 import { DENSITY_WEIGHT, GAME_MIN_PER_REAL_SEC, WALK_TILES_PER_SEC } from "../../src/sim/constants";
-import { FieldCache, bestNeighbour, computeField, walkMinutes } from "../../src/sim/routeField";
+import { FieldCache, bestNeighbour, computeField, nextStep, walkMinutes } from "../../src/sim/routeField";
 import { corridorWithWall, openFloor, strip } from "./helpers";
 
 describe("route fields", () => {
@@ -69,5 +69,37 @@ describe("route fields", () => {
     const f = computeField(g, [g.idx(100, 60)]);
     expect(performance.now() - t).toBeLessThan(250);
     expect(Number.isFinite(f[g.idx(0, 0)]!)).toBe(true);
+  });
+
+  test("crowd-weighted nextStep never steps to a tile further from the target", () => {
+    const g = corridorWithWall();
+    const f = computeField(g, [g.idx(6, 0)]);
+    // Heavy crowding everywhere except a few tiles, so the crowd-weighted pick would often retreat.
+    const crowd = new Uint16Array(g.w * g.h);
+    for (let i = 0; i < crowd.length; i++) crowd[i] = (i * 7) % 5 === 0 ? 0 : 4;
+    const crowdAt = (i: number) => crowd[i]!;
+    let retreatsAvoided = 0;
+    for (let y = 0; y < g.h; y++) {
+      for (let x = 0; x < g.w; x++) {
+        const here = g.idx(x, y);
+        if (!g.isWalkable(x, y) || f[here] === 0) continue;
+        const n = nextStep(g, f, x, y, crowdAt);
+        expect(n).toBeGreaterThanOrEqual(0);
+        expect(f[n]!).toBeLessThan(f[here]!);
+        const greedy = bestNeighbour(g, f, x, y, crowdAt);
+        if (f[greedy]! >= f[here]!) retreatsAvoided++;
+      }
+    }
+    // The setup really does tempt bestNeighbour into retreating somewhere.
+    expect(retreatsAvoided).toBeGreaterThan(0);
+  });
+
+  test("nextStep still diverts around a crowded tile when a closer one is free", () => {
+    const g = openFloor(5, 3);
+    const f = computeField(g, [g.idx(4, 1)]);
+    const crowdAt = (i: number) => (i === g.idx(2, 1) ? 10 : 0);
+    const n = nextStep(g, f, 1, 1, crowdAt);
+    expect(n).not.toBe(g.idx(2, 1));
+    expect(f[n]!).toBeLessThan(f[g.idx(1, 1)]!);
   });
 });

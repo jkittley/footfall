@@ -122,7 +122,7 @@ describe("movement", () => {
     const crowded = build(true);
     expect(alone).toBeLessThan(60);
     expect(crowded).toBeLessThan(60);
-    expect(alone).toBeLessThan(crowded);
+    expect(crowded).toBeGreaterThan(alone * 1.2);
   });
 
   test("speedFactor bounds", () => {

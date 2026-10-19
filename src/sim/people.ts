@@ -32,7 +32,10 @@ export enum Need {
 
 export const NEED_COUNT = 6;
 
-/** Struct-of-arrays store of people; slot indices are stable while a person is alive. */
+/**
+ * Struct-of-arrays store of people; slot indices are stable while a person is alive.
+ * Liveness is isAlive / forEachAlive, never `state === PState.Free` (Free is a live state).
+ */
 export class PeopleStore {
   readonly cap: number;
   count = 0;
