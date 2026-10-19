@@ -1,10 +1,20 @@
-import { START_MINUTE } from "./clock";
+import { START_MINUTE, dayIndex } from "./clock";
 import { GAME_MIN_PER_REAL_SEC, MAX_PEOPLE } from "./constants";
 import { CrowdGrid } from "./crowd";
+import {
+  DISRUPTION_REFUND_FACTOR,
+  FARE_BONUS,
+  Ledger,
+  REFUND,
+  STARTING_CASH,
+  dailyUpkeep,
+  type DayStats,
+  type DaySummary,
+} from "./economy";
 import type { Grid, Rect } from "./grid";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
 import { stepMovement } from "./movement";
-import { PState, PeopleStore } from "./people";
+import { Journey, PState, PeopleStore } from "./people";
 import { Rng } from "./rng";
 import { FieldCache } from "./routeField";
 import { stepSpawner } from "./spawner";
@@ -17,8 +27,7 @@ const PRUNE_AFTER_MIN = 60;
 export type GameEvent =
   | { kind: "toast"; text: string }
   | { kind: "outcome"; personId: number; onTime: boolean; excluded: boolean }
-  // DaySummary arrives with the economy (Task 9).
-  | { kind: "dayEnd"; summary: unknown }
+  | { kind: "dayEnd"; summary: DaySummary }
   | { kind: "autosave" };
 
 export interface World {
@@ -37,7 +46,10 @@ export interface World {
   /** Index = slot id - 1. */
   platformActive: boolean[];
   events: GameEvent[];
-  stats: { movedToday: number; onTimeToday: number; missedToday: number };
+  stats: DayStats;
+  ledger: Ledger;
+  /** The game day now in progress; closed (once each) when the clock passes into the next. */
+  day: number;
   nextId: number;
 }
 
@@ -59,6 +71,8 @@ export function createWorld(seed: number): World {
     platformActive: map.slots.map((s) => s.id <= map.startingPlatforms),
     events: [],
     stats: { movedToday: 0, onTimeToday: 0, missedToday: 0 },
+    ledger: new Ledger(STARTING_CASH),
+    day: dayIndex(START_MINUTE),
     nextId: 1,
   };
   w.timetable.ensureHorizon(w.minute, activePlatformIds(w), w.rng);
@@ -114,9 +128,13 @@ export function recordOutcome(w: World, personId: number, onTime: boolean, exclu
   p.counted[personId] = 1;
   w.events.push({ kind: "outcome", personId, onTime, excluded });
   w.stats.movedToday++;
-  if (onTime) w.stats.onTimeToday++;
-  else w.stats.missedToday++;
-  // Task 9: fares and refunds. Task 13: service meter sample.
+  if (!excluded) {
+    if (onTime) w.stats.onTimeToday++;
+    else w.stats.missedToday++;
+  }
+  if (!onTime) w.ledger.debit("refunds", excluded ? REFUND * DISRUPTION_REFUND_FACTOR : REFUND);
+  else if (p.journey[personId] !== Journey.Arriving) w.ledger.credit("fares", FARE_BONUS);
+  // Task 13: service meter sample.
 }
 
 /**
@@ -154,4 +172,16 @@ export function step(w: World, dtReal: number): void {
   const arrived = stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, dtReal);
   handleArrivals(w, arrived);
   w.crowd.rebuild(w.people, w.grid);
+  rollDays(w);
+}
+
+/** Closes each day the clock has passed (several, after a huge step): upkeep, summary, fresh stats. */
+function rollDays(w: World): void {
+  const today = dayIndex(w.minute);
+  while (w.day < today) {
+    w.ledger.debit("maintenance", dailyUpkeep(w));
+    w.events.push({ kind: "dayEnd", summary: w.ledger.closeDay(w.day, w.stats) });
+    w.stats = { movedToday: 0, onTimeToday: 0, missedToday: 0 };
+    w.day++;
+  }
 }
