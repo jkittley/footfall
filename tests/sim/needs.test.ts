@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { DESPERATE_AFTER_MIN, SIM_DT } from "../../src/sim/constants";
+import { DESPERATE_AFTER_MIN, DESPERATE_SPEED_MUL, FATIGUE_SPEED_MUL, SIM_DT } from "../../src/sim/constants";
 import { FacilityKind, TENANTS, Tenant, createFacility, tryJoin, type Facility } from "../../src/sim/facilities";
 import { Grid, Tile, type Rect } from "../../src/sim/grid";
 import { createTurnstiles, stepMovement } from "../../src/sim/movement";
@@ -9,7 +9,7 @@ import { Rng } from "../../src/sim/rng";
 import { CrowdGrid } from "../../src/sim/crowd";
 import { FieldCache, walkMinutes } from "../../src/sim/routeField";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { OX, OY, at, openEveryGate, openFloor, runMinutes } from "./helpers";
+import { OX, OY, at, openEveryGate, openFloor, runMinutes, scaledByDemand } from "./helpers";
 
 // A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
 const ISLAND: Rect = at(60, 30, 20, 20);
@@ -116,13 +116,84 @@ test("a desperate person with no toilet slows down", () => {
   expect(w.people.errand[pid]).toBe(Need.Toilet);
   expect(w.people.speedMul[pid]).toBe(1);
   runMinutes(w, 2);
-  expect(w.people.speedMul[pid]).toBeCloseTo(0.7);
+  expect(w.people.speedMul[pid]).toBeCloseTo(DESPERATE_SPEED_MUL);
   // A toilet opens in sight: once they have been, they are back to full speed.
   createFacility(w, FacilityKind.Toilet, at(70, 40, 1, 2));
   const until = w.minute + 30;
   while (w.minute < until && need(w, pid, Need.Toilet) !== 0) step(w, SIM_DT);
   expect(need(w, pid, Need.Toilet)).toBe(0);
   expect(w.people.speedMul[pid]).toBe(1);
+});
+
+test("a desperate person who drops the errand stays slow until a toilet visit", () => {
+  const w = islandWorld();
+  const pid = person(w, 65, 40, 600, PState.Waiting);
+  setNeed(w, pid, Need.Toilet, 1);
+  runMinutes(w, DESPERATE_AFTER_MIN + 1);
+  expect(w.people.speedMul[pid]).toBeCloseTo(DESPERATE_SPEED_MUL);
+  // Their goal closes in: the errand is dropped, but not the desperation.
+  w.people.deadline[pid] = w.minute + 1;
+  runMinutes(w, 2);
+  expect(w.people.errand[pid]).toBe(-1);
+  runMinutes(w, 5);
+  expect(w.people.speedMul[pid]).toBeCloseTo(DESPERATE_SPEED_MUL);
+  expect(w.people.desperate[pid]).toBe(1);
+  // Time again, and a toilet in sight: one visit puts them back to full speed.
+  w.people.deadline[pid] = w.minute + 600;
+  createFacility(w, FacilityKind.Toilet, at(70, 40, 1, 2));
+  const until = w.minute + 60;
+  while (w.minute < until && w.people.desperate[pid]) step(w, SIM_DT);
+  expect(w.people.desperate[pid]).toBe(0);
+  expect(need(w, pid, Need.Toilet)).toBeLessThan(1);
+  expect(w.people.speedMul[pid]).toBe(1);
+});
+
+test("a tired walker who is not seated is slower, and a seat restores their speed", () => {
+  const w = islandWorld();
+  const pid = person(w, 65, 40, 600, PState.Waiting);
+  setNeed(w, pid, Need.Tired, 1);
+  step(w, SIM_DT);
+  expect(w.people.speedMul[pid]).toBeCloseTo(FATIGUE_SPEED_MUL);
+  // Fatigue and desperation together: the slower wins.
+  w.people.desperate[pid] = 1;
+  step(w, SIM_DT);
+  expect(w.people.speedMul[pid]).toBeCloseTo(Math.min(DESPERATE_SPEED_MUL, FATIGUE_SPEED_MUL));
+  w.people.desperate[pid] = 0;
+  createFacility(w, FacilityKind.Seating, at(70, 40, 1, 2));
+  const until = w.minute + 120;
+  let sat = false;
+  while (w.minute < until && need(w, pid, Need.Tired) >= 1) {
+    step(w, SIM_DT);
+    if (w.people.state[pid] === PState.Seated) sat = true;
+  }
+  expect(sat).toBe(true);
+  expect(need(w, pid, Need.Tired)).toBeLessThan(1);
+  expect(w.people.speedMul[pid]).toBe(1);
+});
+
+/** How far a lone walker gets along an open strip in `steps` steps, tired or not. */
+function stripWalk(tired: boolean, steps: number): number {
+  const grid = openFloor(60, 1);
+  const people = new PeopleStore(1);
+  const i = people.alloc();
+  people.x[i] = 0.5;
+  people.y[i] = 0.5;
+  people.state[i] = PState.Walking;
+  people.targetKey[i] = "end";
+  if (tired) people.needs[i * NEED_COUNT + Need.Tired] = 1;
+  people.refreshSpeed(i);
+  const fields = new FieldCache(grid);
+  const crowd = new CrowdGrid(grid.w, grid.h);
+  const turnstiles = createTurnstiles(grid.w, 1);
+  for (let n = 0; n < steps; n++) {
+    crowd.rebuild(people, grid);
+    stepMovement(grid, fields, () => [grid.idx(59, 0)], people, crowd, turnstiles, SIM_DT);
+  }
+  return people.x[i]! - 0.5;
+}
+
+test("a tired walker covers FATIGUE_SPEED_MUL of a rested one's ground", () => {
+  expect(stripWalk(true, 300) / stripWalk(false, 300)).toBeCloseTo(FATIGUE_SPEED_MUL, 2);
 });
 
 test("a desperate walker drifts off the straight route but still gets there", () => {
@@ -137,6 +208,7 @@ test("a desperate walker drifts off the straight route but still gets there", ()
   people.state[i] = PState.Walking;
   people.targetKey[i] = "end";
   people.speedMul[i] = 0.7;
+  people.desperate[i] = 1;
   const rng = new Rng(3);
   const turnstiles = createTurnstiles(grid.w * grid.h, people.x.length);
   let offRow = 0;
@@ -260,7 +332,7 @@ test("errands never make a fair-deadline person miss on an empty map", () => {
     all++;
     if (e.onTime) onTime++;
   }
-  expect(all).toBeGreaterThan(200);
+  expect(all).toBeGreaterThan(scaledByDemand(200));
   expect(w.ledger.today.rent).toBeGreaterThan(0);
   expect(toiletUsed).toBe(true);
   expect(onTime / all).toBeGreaterThanOrEqual(0.95);
@@ -335,6 +407,7 @@ test("a desperate walker in a walled corridor only ever stands on walkable tiles
   people.state[i] = PState.Walking;
   people.targetKey[i] = "end";
   people.speedMul[i] = 0.7;
+  people.desperate[i] = 1;
   const rng = new Rng(11);
   const turnstiles = createTurnstiles(grid.w * grid.h, people.x.length);
   let arrived = false;

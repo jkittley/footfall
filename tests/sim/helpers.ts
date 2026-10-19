@@ -1,7 +1,7 @@
 import { Grid, Tile, type Rect } from "../../src/sim/grid";
 import { CITY } from "../../src/sim/maps/city";
 import { HARBOUR_STREET, type StationMap } from "../../src/sim/maps/harbourStreet";
-import { SIM_DT } from "../../src/sim/constants";
+import { SIM_DT, SPAWN_PER_MIN_PER_PLATFORM } from "../../src/sim/constants";
 import { step, type World } from "../../src/sim/world";
 
 export type XY = [number, number];
@@ -190,4 +190,12 @@ export function openEveryGate(w: World): void {
 export function runMinutes(w: World, minutes: number): void {
   const until = w.minute + minutes;
   while (w.minute < until) step(w, SIM_DT);
+}
+
+/** Departing demand when the sample-size floors in these tests were written. */
+const DEMAND_WHEN_WRITTEN = 0.3;
+
+/** A sanity count (how many outcomes a run should see) written at DEMAND_WHEN_WRITTEN, scaled to today's demand. */
+export function scaledByDemand(n: number): number {
+  return Math.round((n * SPAWN_PER_MIN_PER_PLATFORM) / DEMAND_WHEN_WRITTEN);
 }

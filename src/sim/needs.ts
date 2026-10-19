@@ -1,7 +1,6 @@
 import {
   ABANDON_MARGIN_MIN,
   DESPERATE_AFTER_MIN,
-  DESPERATE_SPEED_MUL,
   SEARCH_INTERVAL_MIN,
   SIGHT_RADIUS,
   SIGN_RADIUS,
@@ -16,7 +15,7 @@ export const NEED_RATE_PER_MIN: Record<Need, number> = {
   [Need.Hunger]: 1 / 240,
   [Need.Thirst]: 1 / 150,
   [Need.Tired]: 1 / 200,
-  [Need.Toilet]: 1 / 180,
+  [Need.Toilet]: 1 / 60,
   [Need.Browse]: 1 / 300,
   [Need.Charge]: 1 / 400,
 };
@@ -189,7 +188,8 @@ const rise = new Float64Array(NEED_COUNT);
  * or over 1 as an errand when they have time for it and their train is not in, look round for a facility for it every
  * SEARCH_INTERVAL_MIN (in sight, or named by a nearby sign), and walk to one they know; anyone
  * whose goal is getting close drops the errand, need unmet. Someone who has gone DESPERATE_AFTER_MIN
- * without finding a toilet slows down and wanders.
+ * without finding a toilet slows down and wanders until they have been to one, errand dropped or
+ * not; someone tired (at or over 1) walks slower until they have sat down.
  */
 export function stepNeeds(w: World, dtMin: number): void {
   w.searchClock += dtMin;
@@ -213,6 +213,7 @@ export function stepNeeds(w: World, dtMin: number): void {
     for (let n = 0; n < count; n++) needs[base + n] = needs[base + n]! + rise[n]!;
     if (st === waiting) needs[base + tired] = needs[base + tired]! + rise[tired]!;
     if (leisure[i]) needs[base + browse] = needs[base + browse]! + rise[browse]!;
+    p.refreshSpeed(i);
     if (st !== walking && st !== waiting) continue;
 
     let errand = p.errand[i]!;
@@ -254,6 +255,9 @@ export function stepNeeds(w: World, dtMin: number): void {
       continue;
     }
     p.seekMin[i] = p.seekMin[i]! + dtMin;
-    if (need === Need.Toilet && p.seekMin[i]! > DESPERATE_AFTER_MIN) p.speedMul[i] = DESPERATE_SPEED_MUL;
+    if (need === Need.Toilet && p.seekMin[i]! > DESPERATE_AFTER_MIN && !p.desperate[i]) {
+      p.desperate[i] = 1;
+      p.refreshSpeed(i);
+    }
   }
 }

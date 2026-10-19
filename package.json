@@ -8,7 +8,8 @@
     "build": "vite build",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "bench:sim": "tsx scripts/benchSim.ts"
+    "bench:sim": "tsx scripts/benchSim.ts",
+    "balance": "tsx scripts/balance.ts"
   },
   "devDependencies": {
     "tsx": "^4.23.15",

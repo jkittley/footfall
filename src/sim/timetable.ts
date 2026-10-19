@@ -6,7 +6,7 @@ export const BASE_INTERVAL_MIN = 50;
 export const MIN_INTERVAL_MIN = 20;
 export const MAX_INTERVAL_MIN = 60;
 export const DWELL_MIN = 12;
-export const ALIGHT_BASE = 6;
+export const ALIGHT_BASE = 3.6;
 export const APPROACH_MIN = 3;
 export const LEAVE_MIN = 3;
 /** A platform's first service arrives within this many minutes, however sparse the timetable then is. */

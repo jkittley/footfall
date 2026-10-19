@@ -17,7 +17,7 @@ export const MIN_SPEED_FACTOR = 0.25;
 /** Every deadline leaves at least this much spare time (game minutes) over the unimpeded walk. */
 export const MIN_SLACK_MINUTES = 3;
 /** Departing passengers per game minute per active platform at demand 1. */
-export const SPAWN_PER_MIN_PER_PLATFORM = 0.3;
+export const SPAWN_PER_MIN_PER_PLATFORM = 0.18;
 /** Share of alighting passengers who connect to a train on another platform. */
 export const CONNECT_SHARE = 0.15;
 /** Game minutes between a retail unit being built (or emptied) and its tenant moving in. */
@@ -25,7 +25,7 @@ export const TENANT_DELAY_MIN = 40;
 /** A to-let unit counts passers-by within this many tiles of it. */
 export const FOOTFALL_RADIUS = 6;
 /** Passers-by in a day that put a unit's rent multiplier at 1.0. */
-export const RENT_FOOTFALL_REF = 300;
+export const RENT_FOOTFALL_REF = 1300;
 export const RENT_MUL_MIN = 0.6;
 export const RENT_MUL_MAX = 2.0;
 /** A seated person stands this many minutes earlier than their walk to the goal strictly needs. */
@@ -49,11 +49,13 @@ export const SIGHT_RADIUS = 8;
 /** A sign this many tiles away (straight line) or nearer is read. */
 export const SIGN_RADIUS = 10;
 /** A person who has not found a toilet in this many game minutes is desperate. */
-export const DESPERATE_AFTER_MIN = 20;
-/** A desperate person's speed multiplier. */
-export const DESPERATE_SPEED_MUL = 0.7;
+export const DESPERATE_AFTER_MIN = 15;
+/** A desperate person's speed multiplier, until a toilet visit. */
+export const DESPERATE_SPEED_MUL = 0.3;
+/** Speed multiplier of someone whose tiredness is at or over 1 and who is not sitting, until they have sat down. */
+export const FATIGUE_SPEED_MUL = 0.85;
 /** Chance per tile walked that a desperate person lurches to a random neighbouring tile. */
-export const DRIFT_PER_TILE = 0.25;
+export const DRIFT_PER_TILE = 0.5;
 /** An errand is dropped when fewer than this many spare minutes remain over the walk to the goal. */
 export const ABANDON_MARGIN_MIN = 5;
 /** Game minutes after an errand ends before a person takes up another. */
@@ -66,9 +68,9 @@ export const MIN_SAMPLES = 30;
 export const GROW_RATE = 0.9;
 /** An on-time rate below this, held for SUSTAIN_MIN, closes a platform. */
 export const SHRINK_RATE = 0.7;
-export const SUSTAIN_MIN = 180;
+export const SUSTAIN_MIN = 480;
 /** Game minutes after a platform opens or closes before the meter can move another. */
-export const COOLDOWN_MIN = 240;
+export const COOLDOWN_MIN = 3000;
 /** Average signal failures per game day. */
 export const DISRUPTIONS_PER_DAY = 1.5;
 export const DISRUPTION_MIN_MIN = 60;

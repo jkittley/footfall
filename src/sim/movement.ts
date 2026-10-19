@@ -231,7 +231,7 @@ function randomNeighbour(grid: Grid, x: number, y: number, rng: Rng): number {
  * Speed comes from `crowd` as passed in (the caller rebuilds it); the walker counts in its own tile.
  * Positions are written back through Math.fround after every sub-step, so the stored Float32 value
  * is the one that was checked against walls.
- * Given `rng`, a field walker slowed below full speed (desperate) lurches to a random neighbouring
+ * Given `rng`, a desperate field walker lurches to a random neighbouring
  * tile about DRIFT_PER_TILE of the tiles they walk, following the field otherwise.
  * A gate tile is a turnstile (`turnstiles`, sized for `grid` and `people`): it admits one person
  * per GATE_INTERVAL_SEC, whoever is still on it, longest waiting first. Anyone it is not ready for
@@ -254,7 +254,7 @@ export function stepMovement(
   const counts = crowd.counts;
   const crowdAt = (n: number): number => counts[n]!;
   const w = grid.w;
-  const { x, y, state, targetKey, speedMul, drift } = people;
+  const { x, y, state, targetKey, speedMul, drift, desperate } = people;
   const ts = turnstiles;
 
   for (let i = 0, end = people.end; i < end; i++) {
@@ -318,7 +318,7 @@ export function stepMovement(
     } else {
       thunkKey = key;
       const field = fields.get(key, targetsThunk);
-      const drifts = rng !== undefined && speedMul[i]! < 1;
+      const drifts = rng !== undefined && desperate[i] === 1;
       for (let iter = 0; iter < maxIter; iter++) {
         const here = ty * w + tx;
         if (field[here] === 0) {

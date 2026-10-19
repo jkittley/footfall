@@ -368,19 +368,21 @@ test("a unit on the main path ends the day with a higher rent multiplier than on
   busy.tenantAt = quiet.tenantAt = -1;
   expect(busy.rentMul).toBe(1);
   expect(busy.footfallYesterday).toBe(-1);
-  passDay(w, BUSY, 450);
-  expect(busy.footfallYesterday).toBe(450);
-  expect(busy.rentMul).toBeCloseTo(450 / RENT_FOOTFALL_REF);
+  // Half as busy again as the reference: inside the clamp either way.
+  const passers = Math.round(RENT_FOOTFALL_REF * 1.5);
+  passDay(w, BUSY, passers);
+  expect(busy.footfallYesterday).toBe(passers);
+  expect(busy.rentMul).toBeCloseTo(passers / RENT_FOOTFALL_REF);
   expect(quiet.rentMul).toBe(RENT_MUL_MIN);
   expect(busy.rentMul).toBeGreaterThan(quiet.rentMul);
   expect(busy.footfallToday).toBe(0);
   expect(busy.passedSeen.size).toBe(0);
-});
+}, 60_000);
 
 test("rentMul is clamped to 0.6..2.0 and applied to the next day's rent", () => {
   const w = islandWorld();
   const f = foodUnit(w);
-  passDay(w, UNIT, 900);
+  passDay(w, UNIT, Math.ceil(RENT_FOOTFALL_REF * RENT_MUL_MAX) + 100);
   expect(f.rentMul).toBe(RENT_MUL_MAX);
   const before = w.ledger.today.rent;
   const pid = person(w, 64, 36);
@@ -388,7 +390,7 @@ test("rentMul is clamped to 0.6..2.0 and applied to the next day's rent", () => 
   serveThrough(w, pid);
   expect(w.ledger.today.rent - before).toBeCloseTo(TENANTS[Tenant.FoodDrink].spend * RENT_SHARE * RENT_MUL_MAX);
   expect(f.takingsToday).toBeCloseTo(TENANTS[Tenant.FoodDrink].spend);
-});
+}, 60_000);
 
 test("a let unit counts passers-by without disturbing a to-let unit's tenant footfall", () => {
   const w = islandWorld();

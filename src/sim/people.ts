@@ -1,5 +1,5 @@
 import { decodeBytesInto, encodeBytes } from "./base64";
-import { ERRAND_COOLDOWN_MIN } from "./constants";
+import { DESPERATE_SPEED_MUL, ERRAND_COOLDOWN_MIN, FATIGUE_SPEED_MUL } from "./constants";
 
 export enum Mode {
   Train = 0,
@@ -92,6 +92,8 @@ export class PeopleStore {
   errandCooldown: Float32Array;
   /** Tile a desperate walker is lurching to, or -1. */
   drift: Int32Array;
+  /** 1 once a toilet search has gone past DESPERATE_AFTER_MIN; only a toilet visit clears it. */
+  desperate: Uint8Array;
   timer: Float32Array;
   counted: Uint8Array;
   /** Unique per person for the life of the game; unlike the slot, never reused. */
@@ -127,6 +129,7 @@ export class PeopleStore {
     this.seekMin = new Float32Array(cap);
     this.errandCooldown = new Float32Array(cap);
     this.drift = new Int32Array(cap);
+    this.desperate = new Uint8Array(cap);
     this.timer = new Float32Array(cap);
     this.counted = new Uint8Array(cap);
     this.serial = new Float64Array(cap);
@@ -204,6 +207,7 @@ export class PeopleStore {
     for (const [name, v] of Object.entries(p)) {
       if (ArrayBuffer.isView(v)) {
         const b64 = s.arrays[name];
+        if (name === "desperate" && b64 === undefined) continue; // Saved before desperation lasted: nobody is.
         if (name === "serial" && b64 === undefined) {
           // Saved before serials: the slot id was the identity, so keep it.
           for (let i = 0; i < s.top; i++) p.serial[i] = i;
@@ -230,13 +234,18 @@ export class PeopleStore {
     return p;
   }
 
-  /** Errand over, met or not: full speed again, and a pause before the next one. */
+  /** Errand over, met or not: a pause before the next one. Desperation and fatigue outlast it (see refreshSpeed). */
   endErrand(i: number): void {
     this.errand[i] = -1;
     this.errandFacility[i] = -1;
-    this.speedMul[i] = 1;
     this.drift[i] = -1;
     this.errandCooldown[i] = ERRAND_COOLDOWN_MIN;
+  }
+
+  /** Speed multiplier from desperation and fatigue (tired at or over 1 and not sitting), the lower of the two. */
+  refreshSpeed(i: number): void {
+    const fatigued = this.needs[i * NEED_COUNT + Need.Tired]! >= 1 && this.state[i] !== PState.Seated;
+    this.speedMul[i] = Math.min(this.desperate[i] ? DESPERATE_SPEED_MUL : 1, fatigued ? FATIGUE_SPEED_MUL : 1);
   }
 
   private reset(i: number): void {
@@ -261,6 +270,7 @@ export class PeopleStore {
     this.seekMin[i] = 0;
     this.errandCooldown[i] = 0;
     this.drift[i] = -1;
+    this.desperate[i] = 0;
     this.timer[i] = 0;
     this.counted[i] = 0;
   }

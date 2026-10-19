@@ -33,7 +33,7 @@ export const TENANTS: Record<LetTenant, { name: string; serveMin: number; spend:
   [Tenant.Electronics]: { name: "Electronics", serveMin: 6, spend: 25, maxQueue: 4, meets: [Need.Browse] },
 };
 
-export const TOILET = { serveMin: 3, maxQueue: 10 } as const;
+export const TOILET = { serveMin: 1, maxQueue: 10 } as const;
 
 const LET_TENANTS: readonly LetTenant[] = [Tenant.FoodDrink, Tenant.Newsagent, Tenant.PhoneCharging, Tenant.Electronics];
 const COMMUTER_WEIGHTS: Record<LetTenant, number> = {
@@ -408,8 +408,10 @@ function finishService(w: World, f: Facility, pid: number): void {
     for (const need of t.meets) p.needs[base + need] = 0;
   } else if (f.kind === FacilityKind.Toilet) {
     p.needs[base + Need.Toilet] = 0;
+    p.desperate[pid] = 0;
   }
   resume(p, pid);
+  p.refreshSpeed(pid);
 }
 
 function stepQueue(w: World, f: Facility, dtMin: number): void {
@@ -457,6 +459,7 @@ function stepSeats(w: World, f: Facility): void {
     if (w.minute >= s.until || spareMinutes(w, s.pid) <= SEAT_LEAVE_MARGIN) {
       p.needs[pid * NEED_COUNT + Need.Tired] = 0;
       resume(p, pid);
+      p.refreshSpeed(pid);
     } else {
       f.serving[n++] = s;
     }

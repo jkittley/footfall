@@ -7,7 +7,7 @@ import { createTurnstiles, stepMovement, type Turnstiles } from "../../src/sim/m
 import { PState, PeopleStore } from "../../src/sim/people";
 import { FieldCache } from "../../src/sim/routeField";
 import { createWorld, fieldTargets, waitingSpots } from "../../src/sim/world";
-import { openFloor, runMinutes, tilesOf } from "./helpers";
+import { openFloor, runMinutes, scaledByDemand, tilesOf } from "./helpers";
 
 const GATE_ROW = 10;
 
@@ -170,7 +170,7 @@ test("an unobstructed station still has a high on-time rate with 2 gates per isl
     all++;
     if (e.onTime) onTime++;
   }
-  expect(all).toBeGreaterThan(200);
+  expect(all).toBeGreaterThan(scaledByDemand(200));
   expect(onTime / all).toBeGreaterThanOrEqual(0.9);
 });
 

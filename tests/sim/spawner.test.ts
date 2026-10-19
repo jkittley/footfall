@@ -8,7 +8,7 @@ import { computeField } from "../../src/sim/routeField";
 import { onTrainArrived, reachableEntrances, sampleSlack } from "../../src/sim/spawner";
 import { stepTrains } from "../../src/sim/trains";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
-import { OY, OX, entranceTiles, openEveryGate, platformTiles, runMinutes, type XY } from "./helpers";
+import { OY, OX, entranceTiles, openEveryGate, platformTiles, runMinutes, scaledByDemand, type XY } from "./helpers";
 
 // Fields computed here from scratch, per grid and layout version, never through the world's cache.
 const fieldMemo = new WeakMap<Grid, Map<string, Float32Array>>();
@@ -83,7 +83,7 @@ test("every spawned person has a fair deadline", () => {
       checked++;
     });
   }
-  expect(checked).toBeGreaterThan(200);
+  expect(checked).toBeGreaterThan(scaledByDemand(200));
   expect([...seen].sort()).toEqual([Journey.Departing, Journey.Arriving, Journey.Connecting]);
 });
 
@@ -123,7 +123,7 @@ test("an unobstructed station has a very high on-time rate", () => {
     all++;
     if (e.onTime) onTime++;
   }
-  expect(all).toBeGreaterThan(200);
+  expect(all).toBeGreaterThan(scaledByDemand(200));
   expect(onTime / all).toBeGreaterThanOrEqual(0.97);
 });
 

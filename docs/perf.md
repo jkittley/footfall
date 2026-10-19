@@ -8,10 +8,13 @@ Browser: `/bench.html` via `npm run dev`; read `window.__bench` after 20 s.
 | Date | Machine | Scenario | Sim ms/frame mean | Sim ms/frame p95 | fps | Draw ms |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-19 | M-series Mac (controller to confirm) | 5,000 walkers, x3 (3 steps/frame) | 2.60 | 2.71 | TBD (browser check) | TBD (browser check) |
+| 2026-10-19 (Task 23, balance pass) | Apple M4 Pro, headless (`npm run bench:sim`, 3 runs) | 5,000 walkers, x3 (3 steps/frame) | 3.43 | 3.52 | controller to check in Chrome | controller to check in Chrome |
 
 Gate: PASS if fps >= 55 and sim + draw <= 12 ms per frame.
 
 ## Notes
+
+- Task 23 re-run: 3.42 / 3.43 / 3.44 ms mean, p95 3.50-3.57, on the balance-pass tree. On the same machine the commit before it (6f0cada) measures 3.46 / 3.63. The rise since the first row comes from the work in between (city map, gates), not from this pass, whose only hot-loop change is reading `desperate[i]` for drift. The scenario steps movement only, so the tuned constants do not move it.
 
 - `drawMs` times command recording on the main thread only, not rasterisation or GPU work. **fps is authoritative.**
 - People are drawn with instanced WebGL2 (one draw call per shape/fill pass, all 5,000 drawn, no culling); the floor and obstacles are a static offscreen canvas blitted each frame.

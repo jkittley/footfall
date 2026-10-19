@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { COOLDOWN_MIN, GROW_RATE, SHRINK_RATE, SUSTAIN_MIN } from "../../src/sim/constants";
 import { ServiceMeter, addPlatform, deactivatePlatform, stepGrowth } from "../../src/sim/growth";
 import { FacilityKind, createFacility } from "../../src/sim/facilities";
 import { Tile, Zone } from "../../src/sim/grid";
@@ -43,7 +44,7 @@ test("meter is null with too few samples", () => {
 test("sustained good service adds platform 3", () => {
   const w = createWorld(1);
   expect(slotHasPlatformTiles(w, 3)).toBe(false);
-  feed(w, 190, 5, 5);
+  feed(w, SUSTAIN_MIN + 10, 5, 5);
   expect(w.platformsAdded).toBe(3);
   expect(w.platformActive[2]).toBe(true);
   expect(slotHasPlatformTiles(w, 3)).toBe(true);
@@ -53,12 +54,13 @@ test("sustained good service adds platform 3", () => {
 test("sustained poor service deactivates a platform but never below 2 or removes tiles", () => {
   const w = createWorld(1);
   addPlatform(w, 3);
-  feed(w, 190, 4, 2);
+  feed(w, SUSTAIN_MIN + 10, 4, 2);
   expect(w.platformActive[2]).toBe(false);
   expect(w.platformsAdded).toBe(3);
   expect(slotHasPlatformTiles(w, 3)).toBe(true);
   expect(toasts(w)).toContain("Platform 3 is closed: too many people missed their trains");
-  feed(w, 360, 4, 2);
+  // Long enough for the cooldown and another full stretch of poor service.
+  feed(w, COOLDOWN_MIN + SUSTAIN_MIN + 10, 4, 2);
   expect(w.platformActive[0]).toBe(true);
   expect(w.platformActive[1]).toBe(true);
   expect(activePlatformIds(w)).toEqual([1, 2]);
@@ -68,7 +70,7 @@ test("reactivates before adding", () => {
   const w = createWorld(1);
   addPlatform(w, 3);
   deactivatePlatform(w, 3);
-  feed(w, 190, 5, 5);
+  feed(w, SUSTAIN_MIN + 10, 5, 5);
   expect(w.platformActive[2]).toBe(true);
   expect(w.platformsAdded).toBe(3);
   expect(toasts(w)).toContain("Platform 3 reopens");
@@ -143,6 +145,10 @@ function fixedMeter(w: World): FixedMeter {
   return m;
 }
 
+/** A rate that counts as good service, and one in the dead band between poor and good. */
+const GOOD = (GROW_RATE + 1) / 2;
+const DEAD_BAND = (SHRINK_RATE + GROW_RATE) / 2;
+
 /** Advances the clock `minutes` whole minutes, one growth step each. */
 function tick(w: World, minutes: number): void {
   for (let k = 0; k < minutes; k++) {
@@ -153,8 +159,8 @@ function tick(w: World, minutes: number): void {
 
 test("growth acts at exactly SUSTAIN_MIN of good service, not a minute before", () => {
   const w = createWorld(1);
-  fixedMeter(w).value = 0.95;
-  tick(w, 180);
+  fixedMeter(w).value = GOOD;
+  tick(w, SUSTAIN_MIN);
   expect(w.platformsAdded).toBe(2);
   tick(w, 1);
   expect(w.platformsAdded).toBe(3);
@@ -163,14 +169,14 @@ test("growth acts at exactly SUSTAIN_MIN of good service, not a minute before", 
 test("a rate in the dead band resets the sustain timer", () => {
   const w = createWorld(1);
   const m = fixedMeter(w);
-  m.value = 0.95;
-  tick(w, 100);
-  m.value = 0.8;
+  m.value = GOOD;
+  tick(w, SUSTAIN_MIN - 1);
+  m.value = DEAD_BAND;
   tick(w, 1);
   expect(w.growth.goodSince).toBeNull();
   expect(w.growth.badSince).toBeNull();
-  m.value = 0.95;
-  tick(w, 180);
+  m.value = GOOD;
+  tick(w, SUSTAIN_MIN);
   expect(w.platformsAdded).toBe(2);
   tick(w, 1);
   expect(w.platformsAdded).toBe(3);
@@ -179,10 +185,10 @@ test("a rate in the dead band resets the sustain timer", () => {
 test("cooldown blocks a second action for COOLDOWN_MIN", () => {
   const w = createWorld(1);
   fixedMeter(w).value = 1;
-  tick(w, 181);
+  tick(w, SUSTAIN_MIN + 1);
   expect(w.platformsAdded).toBe(3);
-  // 240 minutes of cooldown, then a fresh 180 of sustain.
-  tick(w, 419);
+  // COOLDOWN_MIN of cooldown, then a fresh SUSTAIN_MIN of good service.
+  tick(w, COOLDOWN_MIN + SUSTAIN_MIN - 1);
   expect(w.platformsAdded).toBe(3);
   tick(w, 1);
   expect(w.platformsAdded).toBe(4);
