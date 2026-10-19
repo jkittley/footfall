@@ -698,7 +698,113 @@ test("refuses an unknown version", () => { /* JSON with version 99: deserialise 
 
 ---
 
-### Task 18: Balance pass and handover
+### Task 18: Island platforms
+
+Added 2026-10-19 at the user's request (spec §9 "Platforms come in pairs"). Platforms pair up: one shared walkway with a track either side.
+
+**Files:**
+- Modify: `src/sim/maps/harbourStreet.ts`, `src/sim/growth.ts`, `src/sim/build.ts` (reserved footprint), `src/sim/world.ts` (fieldTargets), `src/sim/trains.ts` (onPlatform), `src/sim/save.ts` + `saveCheck.ts` (`SAVE_VERSION = 2`), `src/render/drawPlan.ts`, `drawTrains.ts`, `labels.ts`, debug world
+- Test: `tests/sim/harbourStreet.test.ts`, `growth.test.ts`, `trains.test.ts`, `build.test.ts`, `save.test.ts`, render label tests
+
+**Interfaces:**
+- Produces:
+  - `interface IslandDef { id: number /*1..9*/; walkway: Rect /*4 cols × 30 rows*/; leftTrack: Rect; rightTrack: Rect; foot: Rect }`
+  - `PlatformSlot` gains `island: number; side: "left" | "right"`; its `track` is its island's left or right track, its `platform` is its half of the walkway (left 2 cols / right 2 cols), its `foot` is the island's foot.
+  - `StationMap` gains `islands: IslandDef[]` (9). Slot `2i − 1` is island `i` left, slot `2i` is island `i` right.
+  - Geometry: island `i` starts at `x0 = 8 + 7(i − 1)`: left track col `x0`, walkway cols `x0+1..x0+4`, right track col `x0+5`, gap col `x0+6`; rows and foot as the old slots (30 rows, foot touching the concourse band).
+  - `paintIsland(grid, island)` paints walkway (Platform), both tracks (Track) and foot (Floor). `paintSlot(grid, slot)` paints its island if the walkway isn't painted yet, otherwise does nothing. `buildGrid(map, n)` paints the islands of the first `n` slots.
+- Rules:
+  - Opening platform `2i − 1` (or `2i`) paints island `i` if needed; the second platform of a pair only flips `platformActive`. Toasts unchanged.
+  - Reserved footprint (build.ts) = every tile of islands with no opened platform (walkway, tracks; foot floor-only as before).
+  - Waiting passengers walk to a random walkable tile of their own half (`slot.platform`); boarding requires being on that half.
+  - An inactive platform greys its own track and half only; its partner keeps working.
+  - Renderer: one walkway per island with a 2px platform edge on both track sides; a label per platform running along its own half; closed/disrupted/future labels per platform as before (future islands: one dashed outline labelled "Future platforms 5 and 6").
+  - `SAVE_VERSION = 2`; a version 1 save is refused ("Unsupported save version"), so boot stashes it and starts a new game with the existing toast.
+  - Move obstacles so none overlap the 9 island footprints and the existing pinch-point and reachability tests still hold.
+
+- [ ] **Step 1: Write failing tests**
+
+```ts
+test("9 islands, 18 slots, slot 2i-1 left and 2i right of island i", () => { /* slots[2].island === 2, side "left", platform rect = island 2 walkway cols x0+1..x0+2 */ });
+test("islands 2..9 are all Ground in the starting grid and clear of obstacles", () => {});
+test("opening platform 3 paints island 2; opening platform 4 changes no tiles", () => { /* grid.version unchanged by addPlatform(4) apart from activation */ });
+test("a platform-2 passenger waits on the right half and boards from it", () => {});
+test("deactivating platform 2 leaves platform 1 boarding normally", () => {});
+test("a version 1 save is refused", () => {});
+```
+
+- [ ] **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS (full suite, typecheck).
+- [ ] **Step 5:** Commit "feat: island platforms".
+
+---
+
+### Task 19: Ticket gates
+
+Added 2026-10-19 at the user's request (spec §9 "Ticket gates", §11 Gate tool).
+
+**Files:**
+- Modify: `src/sim/grid.ts` (tiles), `maps/harbourStreet.ts` (gate line per island), `routeField.ts` (gate cost), `movement.ts` (one person per gate), `build.ts` (Gate tool), `economy.ts` (price, upkeep), `src/render/drawPlan.ts`, `src/ui/toolRail.ts`, `src/ui/format.ts` (tooltip name "Gate")
+- Test: `tests/sim/gates.test.ts`, `build.test.ts`, `economy.test.ts`, `routeField.test.ts`
+
+**Interfaces:**
+- Produces:
+  - `Tile.Gate = 8` (walkable), `Tile.GateClosed = 9` (not walkable; a closed-off slot in a gate line).
+  - `IslandDef.gateLine: Rect` — the walkway's southernmost row (4 tiles). `paintIsland` paints the 2 middle tiles `Gate` and the 2 outer ones `GateClosed`.
+  - `GATE_SPEED_FACTOR = 0.25` (crossing a gate tile takes 4× a floor tile), `stepCost` onto a Gate tile × `1 / GATE_SPEED_FACTOR`, so the unimpeded walk includes gate time.
+  - Movement: at most one person on a Gate tile at once. A person may only move onto a Gate tile nobody occupies (check and claim within the sub-step loop, so it holds at any dt); on it they move at `× GATE_SPEED_FACTOR`. Both directions use the same gates.
+  - Build tool `"gate"`: a single tile that is `GateClosed` on an island with an opened platform → `Gate`, cost `PRICES.gate = 500`. Remove on a `Gate` tile → `GateClosed`, refund half, refused with "An island needs at least one gate" if it is that island's last gate. Upkeep `UPKEEP_PER_DAY.gate = 15` per gate.
+  - Renderer: gates as on the canvas (posts with a gap), closed slots as a solid barrier with posts; tool rail button "Gate" with price; tooltip "Gate · 1 tile · £500".
+  - Save: no version change (tiles are already saved; version 2 from Task 18).
+
+- [ ] **Step 1: Write failing tests**
+
+```ts
+test("never two people on one gate tile, even with a large dt", () => { /* 60 walkers through a 1-gate line, dt 0.5 s, check occupancy every step */ });
+test("one gate is a bottleneck and opening a second roughly doubles throughput", () => { /* people through per 10 game min: 2 gates ≥ 1.7 × 1 gate */ });
+test("fair deadline walk includes gate crossing time", () => { /* walkMinutes across a gate line > the same path without it */ });
+test("Gate tool opens a closed slot, costs 500, and remove refuses the last gate", () => {});
+test("gate upkeep is counted", () => {});
+test("an unobstructed station still has a high on-time rate with 2 gates per island", () => { /* the Task 8 6-hour test: ≥ 0.95 */ });
+```
+
+- [ ] **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS.
+- [ ] **Step 5:** Commit "feat: ticket gates".
+
+---
+
+### Task 20: Rent by location
+
+Added 2026-10-19 at the user's request (spec §8 "Rent by location").
+
+**Files:**
+- Modify: `src/sim/facilities.ts`, `src/sim/world.ts` (rollDays), `src/sim/saveCheck.ts`, `src/ui/game.ts` / shop panel text in `src/ui/format.ts`
+- Test: `tests/sim/facilities.test.ts`, `tests/ui/format.test.ts`, `save.test.ts`
+
+**Interfaces:**
+- Produces:
+  - `Facility.footfallToday: number` — distinct people seen within `FOOTFALL_RADIUS` today (always counted, not only while to let; one seen-set per unit, cleared at midnight), `Facility.rentMul: number` (starts 1).
+  - At each day rollover, for every retail unit: `rentMul = clamp(footfallToday / RENT_FOOTFALL_REF, RENT_MUL_MIN 0.6, RENT_MUL_MAX 2.0)`, then `footfallToday = 0`. `RENT_FOOTFALL_REF = 300` (Task 21 tunes it).
+  - Rent credited per sale = `spend × RENT_SHARE × rentMul` (× leisure multiplier as before).
+  - `rentLine(rentMul): string` → "Busy spot: rent ×1.6" (≥ 1.05), "Quiet spot: rent ×0.8" (≤ 0.95), else "Average spot: rent ×1.0" (one decimal, U+00D7 multiply sign). Shown in the shop panel with "Yesterday: 412 people passed".
+  - Saved and checked like the other facility fields.
+
+- [ ] **Step 1: Write failing tests**
+
+```ts
+test("a unit on the main path ends the day with a higher rent multiplier than one in a corner", () => {});
+test("rentMul is clamped to 0.6..2.0 and applied to the next day's rent", () => {});
+test("rentLine wording", () => { expect(rentLine(1.6)).toBe("Busy spot: rent ×1.6"); expect(rentLine(0.8)).toBe("Quiet spot: rent ×0.8"); expect(rentLine(1)).toBe("Average spot: rent ×1.0"); });
+test("footfallToday and rentMul survive save and load", () => {});
+```
+
+- [ ] **Step 2:** FAIL. **Step 3:** Implement. **Step 4:** PASS.
+- [ ] **Step 5:** Commit "feat: rent by location".
+
+---
+
+### Task 21: Balance pass and handover
+
+(Includes the islands, gates and location rent: the autoplay player also opens a gate on an island when the queue at its gate line stays long, and `RENT_FOOTFALL_REF` is tuned so a typical concourse unit sits near ×1.0.)
 
 **Files:**
 - Create: `src/sim/autoplay.ts` (a scripted "reasonable player" that extends floor towards the next slot and adds one food unit, one toilet and seating per two platforms), `tests/sim/balance.test.ts`

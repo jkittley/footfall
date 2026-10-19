@@ -128,6 +128,7 @@ Taken from the user's Footfall concept canvas, https://claude.ai/artifact/EN5NXX
 - **Starting cash** enough for a few small builds (builder tunes).
 - **Income**
   - Rent: a percentage of each shop's takings. A shop only earns when people buy, so placement matters.
+  - **Rent by location (user's idea, added 2026-10-19):** each shop's rent share is scaled by how busy its spot was the day before (people passing within a few tiles, each counted once a day). A quiet spot pays less than the base share, a busy one up to about double. It is recalculated at midnight and shown in the shop's panel ("Busy spot: rent ×1.6"). Busy spots therefore earn more but also clog more.
   - Fare bonus per passenger who makes their departure.
 - **Costs**
   - Missed-connection refund per passenger who misses.
@@ -149,6 +150,8 @@ Taken from the user's Footfall concept canvas, https://claude.ai/artifact/EN5NXX
   - Sustained poor on-time rate makes one **inactive**.
 - **A platform or gate, once added, is never removed.** An inactive one stays on the plan, greyed out, with no services and no passengers sent to it; the floor and shops around it stay. It comes back into use when the on-time rate recovers. At least the level's starting count always stays active.
 - **Progress counts platforms and gates added, not active (my call),** so the subway opens at 10 rail platforms added, and the airport at 18 + 6. A stage, once opened, never closes or locks again.
+- **Platforms come in pairs (island platforms, user's idea, added 2026-10-19):** each island is one shared walkway with a track on each side; the odd platform is the left track, the even platform the right. Platforms 1 and 2 share island 1, and so on: 18 platforms are 9 islands. Growth still opens one platform at a time; the island (walkway, both track beds, foot) appears with the first platform of its pair, and the second platform's track comes into use when it opens. Waiting passengers stand on their own platform's half of the walkway.
+- **Ticket gates (user's idea, added 2026-10-19):** a line of ticket gates crosses the foot of each island, between the concourse and the walkway. Every passenger going on to or off the island passes through a gate; each gate lets one person through at a time and slowly, so queues form on both sides at peak. An island opens with 2 gates and the rest of the line closed off; the player can buy more gates (up to the walkway's width) with the Gate tool, at a price and a daily upkeep. Gate crossing time is part of the unimpeded walk used for fair deadlines; the queue in front of a gate is not.
 - New platforms/gates appear in **fixed spots chosen by the game** along the track edge or apron; the player builds the station around them. The game may also add the floor directly in front of a new platform so it is reachable (builder's call).
 - Headline number top left is "people moved today"; growth stage shown near it (e.g. "Rail 7 / 18").
 
@@ -200,6 +203,7 @@ All area tools work by **click and drag a rectangle on the tile grid**, with a d
 - **Seating zone.** Pick, drag, pay per tile; capacity grows with size.
 - **Toilet block.** Pick, drag, pay per tile; more tiles serve more people at once.
 - **Wall, rail (queue barrier), sign** (points people towards toilets, seating and shops), **remove**.
+- **Gate:** click a closed-off tile in an island's gate line to open a new ticket gate there (removing one closes it again, half refund).
 - **Movers** (the main tools for crowd management, unlocked over time):
   - **Stairs:** cheap, slow, two way, between levels.
   - **Escalator:** fast, one way, between levels.
@@ -223,7 +227,7 @@ At random intervals (roughly once or twice a game day, more at higher stages):
 
 ## 13. Saving
 
-Autosave to browser storage every game hour and on pause/close; one save slot; "New game" asks before overwriting.
+Autosave to browser storage every game hour and on pause/close; one save slot; "New game" asks before overwriting. A save from before the island-platform change can't be loaded (the map changed); the game says so and starts a new one.
 
 ## 14. Technology (my calls)
 
