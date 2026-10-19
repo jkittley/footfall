@@ -4,11 +4,13 @@ import type { Rng } from "./rng";
 export const TIMETABLE_HORIZON_MIN = 240;
 export const BASE_INTERVAL_MIN = 50;
 export const MIN_INTERVAL_MIN = 20;
-export const MAX_INTERVAL_MIN = 120;
+export const MAX_INTERVAL_MIN = 60;
 export const DWELL_MIN = 12;
-export const ALIGHT_BASE = 25;
+export const ALIGHT_BASE = 6;
 export const APPROACH_MIN = 3;
 export const LEAVE_MIN = 3;
+/** A platform's first service arrives within this many minutes, however sparse the timetable then is. */
+export const FIRST_STAGGER_MAX_MIN = 30;
 
 export const DESTINATIONS = [
   "Ashby", "Leeds Road", "Kingsmoor", "Brackenford", "Saltcote", "Hollin Bridge",
@@ -55,7 +57,7 @@ export class Timetable {
       let last = this.lastDepart.get(platformId);
       if (last === undefined || last < now) {
         // A platform with no running service starts with a staggered first arrival.
-        const first = Math.floor(now) + 1 + rng.int(0, interval(now) - 1);
+        const first = Math.floor(now) + 1 + rng.int(0, Math.min(FIRST_STAGGER_MAX_MIN, interval(now)) - 1);
         last = this.add(platformId, first, rng);
       }
       while (last < until) last = this.add(platformId, last + interval(last), rng);

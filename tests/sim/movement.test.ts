@@ -125,6 +125,18 @@ describe("movement", () => {
     expect(crowded).toBeGreaterThan(alone * 1.2);
   });
 
+  test("a Waiting person walks to a spot on the platform; one with no target stands still", () => {
+    const g = openFloor(10, 3);
+    const s = sim(g, {});
+    const walker = addPerson(s, 0.5, 1.5, `spot:${g.idx(8, 1)}`, PState.Waiting);
+    const stander = addPerson(s, 0.5, 0.5, "", PState.Waiting);
+    const t = timeToArrive(s, walker, 1 / 30, 10);
+    expect(t).toBeLessThan(10);
+    expect(Math.floor(s.people.x[walker]!)).toBe(8);
+    expect(s.people.x[stander]).toBe(0.5);
+    expect(s.people.state[walker]).toBe(PState.Waiting);
+  });
+
   test("speedFactor bounds", () => {
     expect(speedFactor(0)).toBe(1);
     expect(speedFactor(10)).toBe(0.25);

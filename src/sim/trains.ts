@@ -1,6 +1,7 @@
 import { PState } from "./people";
 import type { Service } from "./timetable";
-import { onTrainArrived, recordOutcome, type World } from "./world";
+import { onTrainArrived } from "./spawner";
+import { recordOutcome, type World } from "./world";
 
 /**
  * Runs train events in (w.trainsUpTo, w.minute]: arrivals, boarding by anyone Waiting on their

@@ -11,6 +11,13 @@ export enum Journey {
   Connecting = 2,
 }
 
+/** Where an arriving passenger is headed once they leave the station. */
+export enum DestLabel {
+  Home = 0,
+  Hotel = 1,
+  Work = 2,
+}
+
 export enum PState {
   Free = 0,
   Walking = 1,

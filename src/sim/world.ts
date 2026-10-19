@@ -4,10 +4,11 @@ import { CrowdGrid } from "./crowd";
 import type { Grid, Rect } from "./grid";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
 import { stepMovement } from "./movement";
-import { PeopleStore } from "./people";
+import { PState, PeopleStore } from "./people";
 import { Rng } from "./rng";
 import { FieldCache } from "./routeField";
-import { Timetable, type Service } from "./timetable";
+import { stepSpawner } from "./spawner";
+import { Timetable } from "./timetable";
 import { stepTrains } from "./trains";
 
 /** Services that departed this long ago are dropped from the timetable. */
@@ -112,8 +113,27 @@ export function recordOutcome(w: World, personId: number, onTime: boolean, exclu
   // Task 9: fares and refunds. Task 13: service meter sample.
 }
 
-/** Called once as a service starts dwelling. Task 8 spawns its alighting passengers here. */
-export function onTrainArrived(_w: World, _s: Service): void {}
+/**
+ * Reacts to walkers at their target, changing each one's state or target (or freeing them) so the
+ * next step does not report them again: at an exit an arriving passenger leaves, on time if within
+ * their deadline; on their platform a passenger waits, strolling to a random spot along it.
+ */
+function handleArrivals(w: World, arrived: readonly number[]): void {
+  const p = w.people;
+  for (const i of arrived) {
+    const key = p.targetKey[i]!;
+    if (p.state[i] === PState.Waiting) {
+      p.targetKey[i] = "";
+    } else if (key.startsWith("exit:")) {
+      recordOutcome(w, i, w.minute <= p.deadline[i]!, false);
+      p.free(i);
+    } else if (key.startsWith("platform:")) {
+      const tiles = fieldTargets(w, key);
+      p.state[i] = PState.Waiting;
+      p.targetKey[i] = tiles.length > 0 ? `spot:${w.rng.pick(tiles)}` : "";
+    }
+  }
+}
 
 /** Advances the world by `dtReal` real seconds at x1. */
 export function step(w: World, dtReal: number): void {
@@ -124,8 +144,8 @@ export function step(w: World, dtReal: number): void {
   //   disruptions (Task 14) -> trains -> spawner (Task 8) -> needs (Task 11) -> facilities (Task 10)
   //   -> movement -> crowd -> growth (Task 13) -> economy day rollover (Task 9)
   stepTrains(w);
-  // Arrivals are level-triggered (re-reported each step until state/targetKey changes); Task 8 reacts.
+  stepSpawner(w, dtReal * GAME_MIN_PER_REAL_SEC);
   const arrived = stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, dtReal);
-  void arrived;
+  handleArrivals(w, arrived);
   w.crowd.rebuild(w.people, w.grid);
 }
