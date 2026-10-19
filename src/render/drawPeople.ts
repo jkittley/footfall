@@ -1,16 +1,12 @@
 import type { Camera } from "./camera";
-import { Journey, type PeopleStore } from "../sim/people";
+import { Journey, Mode, type PeopleStore } from "../sim/people";
 import { drawPeople2d } from "./drawPeople2d";
+import { FLOOR, MODE_COLOURS, hexToUnit } from "./palette";
 import { fan, inset, leftHalf, POLYS, RING_PX } from "./shapes";
 import { tryCreate } from "./rendererChoice";
 
-const FLOOR = "#F8F6F2";
-const COLOURS = ["#2F6FDB", "#E8772E", "#7B5CD6", "#E5B72A"]; // indexed by Mode: train, subway, flight, street
+const MODES = [Mode.Train, Mode.Subway, Mode.Flight, Mode.Street] as const;
 const GROUPS = 12; // mode * 3 + journey
-
-function hex(h: string): [number, number, number] {
-  return [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
-}
 
 const VERT = `#version 300 es
 in vec2 a_v;
@@ -55,8 +51,8 @@ class PeopleRenderer {
   /** Per mode: [fullStart, fullCount, innerStart, innerCount, halfStart, halfCount] in vertices. */
   private ranges: number[][] = [];
   private inst = new Float32Array(0);
-  private readonly colours = COLOURS.map(hex);
-  private readonly floor = hex(FLOOR);
+  private readonly colours = MODES.map((m) => hexToUnit(MODE_COLOURS[m]));
+  private readonly floor = hexToUnit(FLOOR);
   private readonly counts = new Int32Array(GROUPS);
   private readonly starts = new Int32Array(GROUPS);
   private readonly cursor = new Int32Array(GROUPS);
@@ -131,10 +127,9 @@ class PeopleRenderer {
   }
 
   /** Returns false (drawing nothing) while the GL context is lost. */
-  draw(ctx: CanvasRenderingContext2D, cam: Camera, people: PeopleStore): boolean {
+  draw(ctx: CanvasRenderingContext2D, cam: Camera, people: PeopleStore, dpr: number): boolean {
     if (this.lost) return false;
     const gl = this.gl;
-    const dpr = ctx.getTransform().a || 1;
     const pw = ctx.canvas.width;
     const ph = ctx.canvas.height;
     if (this.canvas.width !== pw || this.canvas.height !== ph) {
@@ -217,12 +212,19 @@ class PeopleRenderer {
 let renderer: PeopleRenderer | null = null;
 let triedGl = false;
 
-/** Draws every person as its mode's shape and colour; fill is solid (departing), outline (arriving) or half (connecting). Falls back to Canvas 2D when WebGL2 is unavailable or its context is lost. */
-export function drawPeople(ctx: CanvasRenderingContext2D, cam: Camera, people: PeopleStore): void {
+/**
+ * Draws every person as its mode's shape and colour; fill is solid (departing), outline (arriving)
+ * or half (connecting). Falls back to Canvas 2D when WebGL2 is unavailable or its context is lost.
+ *
+ * Contract: `ctx` belongs to a canvas covering the whole view, whose backing store is `dpr` device
+ * px per CSS px; the camera maps world tiles to CSS px. The incoming transform is ignored (both
+ * paths set their own), so a caller's translation or scale never shifts people off the plan.
+ */
+export function drawPeople(ctx: CanvasRenderingContext2D, cam: Camera, people: PeopleStore, dpr: number): void {
   if (!triedGl) {
     triedGl = true;
     renderer = tryCreate(() => new PeopleRenderer(), (msg, e) => console.warn(msg, e));
   }
-  if (renderer?.draw(ctx, cam, people)) return;
-  drawPeople2d(ctx, cam, people);
+  if (renderer?.draw(ctx, cam, people, dpr)) return;
+  drawPeople2d(ctx, cam, people, dpr);
 }

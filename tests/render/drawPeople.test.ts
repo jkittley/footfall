@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { tryCreate } from "../src/render/rendererChoice";
-import { inset, POLYS, RING_PX } from "../src/render/shapes";
+import { tryCreate } from "../../src/render/rendererChoice";
+import { inset, POLYS, RING_PX } from "../../src/render/shapes";
 
 describe("tryCreate", () => {
   it("returns the renderer when creation works", () => {

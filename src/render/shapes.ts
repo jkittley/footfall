@@ -1,6 +1,7 @@
 import { Mode } from "../sim/people";
 
-const CIRCLE_R = 5;
+/** Circle radius at zoom 1 (px); POLYS[Mode.Train] approximates it for WebGL, the 2D path draws an arc. */
+export const CIRCLE_R = 5;
 const CIRCLE_SEGMENTS = 16;
 
 export type Pt = readonly [number, number];
@@ -37,7 +38,6 @@ export function fan(poly: readonly Pt[], out: number[]): void {
     out.push(0, 0, a[0], a[1], b[0], b[1]);
   }
 }
-
 
 /** Outline ring width at zoom 1 (px); it scales with zoom like the shapes do. */
 export const RING_PX = 1.5;

@@ -2,6 +2,7 @@ import { BenchScenario, BENCH_H, BENCH_W } from "./benchScenario";
 import { Camera } from "./render/camera";
 import { drawPeople } from "./render/drawPeople";
 import { MAX_STEPS_PER_FRAME, SIM_DT, TILE_PX } from "./sim/constants";
+import { FLOOR, GROUND, TRACK, WALL } from "./render/palette";
 
 const SPEED = 3;
 const REPORT_MS = 1000;
@@ -58,18 +59,18 @@ function resize(): void {
   const lc = layer.getContext("2d");
   if (!lc) throw new Error("2d context unavailable");
   lc.setTransform(dpr, 0, 0, dpr, 0, 0);
-  lc.fillStyle = "#ECE8E1";
+  lc.fillStyle = GROUND;
   lc.fillRect(0, 0, window.innerWidth, window.innerHeight);
   drawWorld(lc);
 }
 function drawWorld(c: CanvasRenderingContext2D): void {
   const [x0, y0] = cam.worldToScreen(0, 0);
   const s = TILE_PX * cam.zoom;
-  c.fillStyle = "#F8F6F2";
+  c.fillStyle = FLOOR;
   c.fillRect(x0, y0, BENCH_W * s, BENCH_H * s);
-  c.fillStyle = "#23262B";
+  c.fillStyle = WALL;
   for (const r of sc.obstacles) c.fillRect(x0 + r.x * s, y0 + r.y * s, r.w * s, r.h * s);
-  c.fillStyle = "#CBC5BA";
+  c.fillStyle = TRACK;
   for (const r of sc.targetAreas) c.fillRect(x0 + r.x * s, y0 + r.y * s, r.w * s, r.h * s);
 }
 
@@ -119,8 +120,7 @@ function frame(now: number): void {
 
   ctx!.setTransform(1, 0, 0, 1, 0, 0);
   ctx!.drawImage(layer, 0, 0);
-  ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-  drawPeople(ctx!, cam, sc.people);
+  drawPeople(ctx!, cam, sc.people, dpr);
   const t2 = performance.now();
 
   sumSim += t1 - t0;
