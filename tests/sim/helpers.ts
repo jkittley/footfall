@@ -1,5 +1,7 @@
 import { Grid, Tile, type Rect } from "../../src/sim/grid";
 import { HARBOUR_STREET, type StationMap } from "../../src/sim/maps/harbourStreet";
+import { SIM_DT } from "../../src/sim/constants";
+import { step, type World } from "../../src/sim/world";
 
 export type XY = [number, number];
 const DIRS: XY[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -154,4 +156,10 @@ export function corridorWithWall(): Grid {
   g.setTile(3, 0, Tile.Wall);
   g.setTile(3, 1, Tile.Wall);
   return g;
+}
+
+/** Steps the world at SIM_DT until its clock has advanced by `minutes`. */
+export function runMinutes(w: World, minutes: number): void {
+  const until = w.minute + minutes;
+  while (w.minute < until) step(w, SIM_DT);
 }
