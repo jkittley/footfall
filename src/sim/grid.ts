@@ -84,6 +84,12 @@ export class Grid {
     this.version++;
   }
 
+  /** The only way game code writes a direction, so route fields see the change. */
+  setDir(x: number, y: number, d: Dir): void {
+    this.dir[this.idx(x, y)] = d;
+    this.version++;
+  }
+
   isWalkable(x: number, y: number): boolean {
     if (!this.inBounds(x, y)) return false;
     const t = this.tile(x, y);

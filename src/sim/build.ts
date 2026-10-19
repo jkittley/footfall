@@ -1,0 +1,422 @@
+import { PRICES, REMOVE_REFUND } from "./economy";
+import { FacilityKind, createFacility, refreshAccess, removeFacility, type Facility } from "./facilities";
+import { Dir, Tile, Zone, type Grid, type Rect } from "./grid";
+import { nudgeToWalkable } from "./movement";
+import { addSign, refreshSigns, type Sign } from "./needs";
+import { PState } from "./people";
+import { activePlatformIds, walkableTargets, type World } from "./world";
+
+export type ToolId = "floor" | "retail" | "seating" | "toilet" | "wall" | "rail" | "sign" | "travelator" | "remove";
+
+export interface PlacementPreview {
+  tool: ToolId;
+  rect: Rect;
+  /** Tiles that will change. */
+  tiles: number[];
+  /** Tiles in the rect that can't take it. */
+  blocked: number[];
+  /** Negative is a refund. */
+  cost: number;
+  valid: boolean;
+  reason: string | null;
+  signKind?: Sign["kind"];
+  dir?: Dir;
+}
+
+interface BuildOpts {
+  signKind?: Sign["kind"];
+  dir?: Dir;
+}
+
+/** One tile's change: any field left out stays as it is. */
+interface Edit {
+  i: number;
+  tile?: Tile;
+  zone?: Zone;
+  dir?: Dir;
+}
+
+/** Everything a placement would do, worked out without touching the world. */
+interface Plan {
+  preview: PlacementPreview;
+  edits: Edit[];
+  newFacility: FacilityKind | null;
+  removedFacilities: Facility[];
+  removedSigns: Sign[];
+}
+
+const FACILITY_OF: Partial<Record<ToolId, FacilityKind>> = {
+  retail: FacilityKind.Retail,
+  toilet: FacilityKind.Toilet,
+  seating: FacilityKind.Seating,
+};
+
+const ZONE_OF: Record<FacilityKind, Zone> = {
+  [FacilityKind.Retail]: Zone.Retail,
+  [FacilityKind.Toilet]: Zone.Toilet,
+  [FacilityKind.Seating]: Zone.Seating,
+};
+
+const PRICE_OF: Record<FacilityKind, number> = {
+  [FacilityKind.Retail]: PRICES.retail,
+  [FacilityKind.Toilet]: PRICES.toilet,
+  [FacilityKind.Seating]: PRICES.seating,
+};
+
+/** Smallest unit as [short side, long side]. */
+const MIN_SIZE: Record<FacilityKind, [number, number]> = {
+  [FacilityKind.Retail]: [2, 2],
+  [FacilityKind.Toilet]: [2, 2],
+  [FacilityKind.Seating]: [1, 2],
+};
+
+const LINE_PRICE = { wall: PRICES.wall, rail: PRICES.rail, travelator: PRICES.travelator } as const;
+const MIN_TRAVELATOR = 3;
+const NEIGHBOURS: readonly [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/** A drag's rect with negative sides flipped, clipped to the map. */
+function normalise(g: Grid, r: Rect): Rect {
+  let { x, y, w, h } = r;
+  if (w < 0) {
+    x += w;
+    w = -w;
+  }
+  if (h < 0) {
+    y += h;
+    h = -h;
+  }
+  const x0 = Math.max(0, x);
+  const y0 = Math.max(0, y);
+  const x1 = Math.min(g.w, x + w);
+  const y1 = Math.min(g.h, y + h);
+  return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
+}
+
+function rectTiles(g: Grid, r: Rect): number[] {
+  const out: number[] = [];
+  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) out.push(g.idx(x, y));
+  return out;
+}
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+function signTiles(w: World): Set<number> {
+  return new Set(w.signs.map((s) => s.tile));
+}
+
+/** Unzoned floor with no sign on it: what everything but floor is built on. */
+function plainFloor(w: World, signs: Set<number>, i: number): boolean {
+  return w.grid.tiles[i] === Tile.Floor && w.grid.zones[i] === Zone.None && !signs.has(i);
+}
+
+function isFoot(w: World, i: number): boolean {
+  const [x, y] = w.grid.xy(i);
+  return w.map.slots.some((s) => x >= s.foot.x && y >= s.foot.y && x < s.foot.x + s.foot.w && y < s.foot.y + s.foot.h);
+}
+
+function emptyPlan(tool: ToolId, rect: Rect, opts: BuildOpts): Plan {
+  const preview: PlacementPreview = { tool, rect, tiles: [], blocked: [], cost: 0, valid: false, reason: null };
+  if (opts.signKind !== undefined) preview.signKind = opts.signKind;
+  if (opts.dir !== undefined) preview.dir = opts.dir;
+  return { preview, edits: [], newFacility: null, removedFacilities: [], removedSigns: [] };
+}
+
+function refuse(plan: Plan, reason: string): Plan {
+  plan.preview.valid = false;
+  plan.preview.reason = reason;
+  return plan;
+}
+
+function planFloor(w: World, plan: Plan): Plan {
+  const g = w.grid;
+  const pv = plan.preview;
+  let joins = false;
+  for (const i of rectTiles(g, pv.rect)) {
+    const t = g.tiles[i] as Tile;
+    if (t === Tile.Ground) {
+      pv.tiles.push(i);
+      const [x, y] = g.xy(i);
+      if (NEIGHBOURS.some(([dx, dy]) => g.isWalkable(x + dx, y + dy))) joins = true;
+    } else if (t !== Tile.Floor && t !== Tile.Platform && t !== Tile.Entrance) {
+      pv.blocked.push(i);
+    }
+  }
+  pv.cost = pv.tiles.length * PRICES.floor;
+  plan.edits = pv.tiles.map((i) => ({ i, tile: Tile.Floor }));
+  if (pv.tiles.length === 0) return refuse(plan, "Nothing to build here");
+  if (!joins) return refuse(plan, "Must join existing floor");
+  return plan;
+}
+
+function planFacility(w: World, plan: Plan, kind: FacilityKind): Plan {
+  const g = w.grid;
+  const pv = plan.preview;
+  const r = pv.rect;
+  const signs = signTiles(w);
+  for (const i of rectTiles(g, r)) (plainFloor(w, signs, i) ? pv.tiles : pv.blocked).push(i);
+  pv.cost = r.w * r.h * PRICE_OF[kind];
+  plan.newFacility = kind;
+  plan.edits = pv.tiles.map((i) => ({ i, zone: ZONE_OF[kind] }));
+  if (r.w * r.h === 0) return refuse(plan, "Nothing to build here");
+  const [short, long] = MIN_SIZE[kind];
+  if (Math.min(r.w, r.h) < short || Math.max(r.w, r.h) < long) return refuse(plan, "Too small");
+  if (pv.blocked.length > 0) return refuse(plan, "Must be on plain floor");
+  if (kind !== FacilityKind.Seating && !hasServiceTile(g, r)) return refuse(plan, "Needs a floor tile beside it");
+  return plan;
+}
+
+function hasServiceTile(g: Grid, r: Rect): boolean {
+  for (let x = r.x; x < r.x + r.w; x++) if (g.isWalkable(x, r.y - 1) || g.isWalkable(x, r.y + r.h)) return true;
+  for (let y = r.y; y < r.y + r.h; y++) if (g.isWalkable(r.x - 1, y) || g.isWalkable(r.x + r.w, y)) return true;
+  return false;
+}
+
+/** Walls, rails and travelators: a line one tile thick on plain floor. */
+function planLine(w: World, plan: Plan, tool: "wall" | "rail" | "travelator", dir: Dir | undefined): Plan {
+  const g = w.grid;
+  const pv = plan.preview;
+  const r = pv.rect;
+  const signs = signTiles(w);
+  for (const i of rectTiles(g, r)) (plainFloor(w, signs, i) ? pv.tiles : pv.blocked).push(i);
+  pv.cost = pv.tiles.length * LINE_PRICE[tool];
+  if (tool === "travelator") {
+    plan.edits = pv.tiles.map((i) => ({ i, zone: Zone.Travelator, dir: dir ?? Dir.None }));
+  } else {
+    plan.edits = pv.tiles.map((i) => ({ i, tile: tool === "wall" ? Tile.Wall : Tile.Rail }));
+  }
+  if (r.w * r.h === 0) return refuse(plan, "Nothing to build here");
+  if (r.w !== 1 && r.h !== 1) return refuse(plan, "Draw a line");
+  if (tool === "travelator") {
+    if (Math.max(r.w, r.h) < MIN_TRAVELATOR) return refuse(plan, "Too short");
+    const along = r.w > 1 ? dir === Dir.E || dir === Dir.W : dir === Dir.N || dir === Dir.S;
+    if (!along) return refuse(plan, "Draw it along its direction");
+    if (pv.blocked.length > 0) return refuse(plan, "Must be on plain floor");
+  }
+  if (pv.tiles.length === 0) return refuse(plan, "Must be on plain floor");
+  return plan;
+}
+
+function planSign(w: World, plan: Plan): Plan {
+  const pv = plan.preview;
+  const r = pv.rect;
+  const signs = signTiles(w);
+  for (const i of rectTiles(w.grid, r)) (plainFloor(w, signs, i) ? pv.tiles : pv.blocked).push(i);
+  pv.cost = PRICES.sign;
+  if (pv.signKind === undefined) return refuse(plan, "Choose a sign");
+  if (r.w !== 1 || r.h !== 1) return refuse(plan, "Pick one tile");
+  if (pv.blocked.length > 0) return refuse(plan, "Must be on plain floor");
+  return plan;
+}
+
+/**
+ * Walls, rails, travelators and signs in the rect and every facility it touches come down, each
+ * tile back to plain floor; plain floor in the rect (never a platform, entrance or apron) goes
+ * back to ground.
+ */
+function planRemove(w: World, plan: Plan): Plan {
+  const g = w.grid;
+  const pv = plan.preview;
+  const changed = new Set<number>();
+  let refund = 0;
+  for (const f of w.facilities.values()) {
+    if (!overlaps(f.rect, pv.rect)) continue;
+    plan.removedFacilities.push(f);
+    refund += f.builtPrice;
+    for (const i of rectTiles(g, f.rect)) {
+      plan.edits.push({ i, zone: Zone.None });
+      changed.add(i);
+    }
+  }
+  const signs = signTiles(w);
+  for (const s of w.signs) {
+    const [x, y] = g.xy(s.tile);
+    if (!overlaps({ x, y, w: 1, h: 1 }, pv.rect)) continue;
+    plan.removedSigns.push(s);
+    refund += PRICES.sign;
+    changed.add(s.tile);
+  }
+  for (const i of rectTiles(g, pv.rect)) {
+    const t = g.tiles[i] as Tile;
+    if (t === Tile.Wall || t === Tile.Rail) {
+      plan.edits.push({ i, tile: Tile.Floor });
+      refund += t === Tile.Wall ? PRICES.wall : PRICES.rail;
+      changed.add(i);
+    } else if (g.zones[i] === Zone.Travelator) {
+      plan.edits.push({ i, zone: Zone.None, dir: Dir.None });
+      refund += PRICES.travelator;
+      changed.add(i);
+    } else if (plainFloor(w, signs, i) && !isFoot(w, i)) {
+      plan.edits.push({ i, tile: Tile.Ground });
+      refund += PRICES.floor;
+      changed.add(i);
+    } else if (t === Tile.Platform || t === Tile.Entrance || (t === Tile.Floor && g.zones[i] === Zone.None && isFoot(w, i))) {
+      pv.blocked.push(i);
+    }
+  }
+  pv.tiles = [...changed].sort((a, b) => a - b);
+  pv.cost = -REMOVE_REFUND * refund;
+  if (pv.tiles.length === 0) return refuse(plan, "Nothing to remove here");
+  return plan;
+}
+
+function applyEdits(g: Grid, edits: readonly Edit[]): void {
+  for (const e of edits) {
+    const [x, y] = g.xy(e.i);
+    if (e.tile !== undefined) g.setTile(x, y, e.tile);
+    if (e.zone !== undefined) g.setZone(x, y, e.zone, -1);
+    if (e.dir !== undefined) g.setDir(x, y, e.dir);
+  }
+}
+
+/** Connected walkable regions (4-neighbour) as a label per tile, -1 where not walkable. */
+function regions(g: Grid): Int32Array {
+  const label = new Int32Array(g.w * g.h).fill(-1);
+  const queue = new Int32Array(g.w * g.h);
+  let next = 0;
+  for (let s = 0; s < label.length; s++) {
+    if (label[s] !== -1) continue;
+    const [sx, sy] = g.xy(s);
+    if (!g.isWalkable(sx, sy)) continue;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = s;
+    label[s] = next;
+    while (head < tail) {
+      const t = queue[head++]!;
+      const x = t % g.w;
+      const y = (t - x) / g.w;
+      for (const [dx, dy] of NEIGHBOURS) {
+        if (!g.isWalkable(x + dx, y + dy)) continue;
+        const n = t + dy * g.w + dx;
+        if (label[n] !== -1) continue;
+        label[n] = next;
+        queue[tail++] = n;
+      }
+    }
+    next++;
+  }
+  return label;
+}
+
+function labelsOf(label: Int32Array, tiles: readonly number[]): Set<number> {
+  const out = new Set<number>();
+  for (const t of tiles) if (label[t]! >= 0) out.add(label[t]!);
+  return out;
+}
+
+function shares(a: Set<number>, b: Set<number>): boolean {
+  for (const x of a) if (b.has(x)) return true;
+  return false;
+}
+
+/**
+ * Null if, after the change, every entrance that reached an active platform before still reaches
+ * every active platform it could reach, and each such platform is still reached from an entrance;
+ * otherwise the reason (the lowest platform cut off, else the first entrance blocked).
+ */
+function reachReason(w: World, after: Grid): string | null {
+  const before = regions(w.grid);
+  const now = regions(after);
+  const platforms = activePlatformIds(w).map((id) => ({ id, tiles: rectTiles(w.grid, w.map.slots[id - 1]!.platform) }));
+  const entrances = w.map.entrances.map((e) => ({ id: e.id, tiles: rectTiles(w.grid, e.tiles) }));
+  const linked = entrances.filter((e) => platforms.some((p) => shares(labelsOf(before, e.tiles), labelsOf(before, p.tiles))));
+  const served = platforms.filter((p) => linked.some((e) => shares(labelsOf(before, e.tiles), labelsOf(before, p.tiles))));
+  for (const p of served) {
+    const at = labelsOf(now, p.tiles);
+    if (!linked.some((e) => shares(labelsOf(now, e.tiles), at))) return `Would cut off Platform ${p.id}`;
+  }
+  for (const e of linked) {
+    const from = labelsOf(now, e.tiles);
+    if (!served.every((p) => shares(from, labelsOf(now, p.tiles)))) return `Would block Entrance ${e.id}`;
+  }
+  return null;
+}
+
+function plan(w: World, tool: ToolId, rect: Rect, opts: BuildOpts): Plan {
+  const p = emptyPlan(tool, normalise(w.grid, rect), opts);
+  p.preview.valid = true;
+  const kind = FACILITY_OF[tool];
+  if (kind !== undefined) planFacility(w, p, kind);
+  else if (tool === "floor") planFloor(w, p);
+  else if (tool === "wall" || tool === "rail" || tool === "travelator") planLine(w, p, tool, opts.dir);
+  else if (tool === "sign") planSign(w, p);
+  else planRemove(w, p);
+  const pv = p.preview;
+  if (!pv.valid) return p;
+  if (p.edits.length > 0) {
+    const after = w.grid.clone();
+    applyEdits(after, p.edits);
+    const reason = reachReason(w, after);
+    if (reason !== null) return refuse(p, reason);
+  }
+  if (pv.cost > 0 && !w.ledger.canAfford(pv.cost)) return refuse(p, "Not enough money");
+  return p;
+}
+
+/** What placing `tool` over `rect` would change and cost, and why not if it can't. Changes nothing. */
+export function previewPlacement(w: World, tool: ToolId, rect: Rect, opts: BuildOpts = {}): PlacementPreview {
+  return plan(w, tool, rect, opts).preview;
+}
+
+/**
+ * Builds (or removes) what `p` previewed, checked afresh against the world as it is now; false and
+ * nothing changed if it is no longer valid. Afterwards anyone left on a blocked tile steps to the
+ * nearest tile still joined to an entrance, queues re-form, and signs re-point.
+ */
+export function applyPlacement(w: World, p: PlacementPreview): boolean {
+  const opts: BuildOpts = {};
+  if (p.signKind !== undefined) opts.signKind = p.signKind;
+  if (p.dir !== undefined) opts.dir = p.dir;
+  const fresh = plan(w, p.tool, p.rect, opts);
+  const pv = fresh.preview;
+  if (!pv.valid) return false;
+  if (pv.cost > 0) w.ledger.debit("build", pv.cost);
+  else if (pv.cost < 0) w.ledger.credit("removals", -pv.cost);
+
+  for (const f of fresh.removedFacilities) removeFacility(w, f);
+  if (fresh.removedSigns.length > 0) w.signs = w.signs.filter((s) => !fresh.removedSigns.includes(s));
+  if (fresh.newFacility !== null) createFacility(w, fresh.newFacility, pv.rect);
+  else applyEdits(w.grid, fresh.edits);
+  if (pv.tool === "sign" && pv.signKind !== undefined) addSign(w, pv.tiles[0]!, pv.signKind);
+
+  for (const f of w.facilities.values()) refreshAccess(w, f);
+  settlePeople(w);
+  refreshSigns(w);
+  return true;
+}
+
+/**
+ * Anyone standing on a tile that is no longer walkable steps to the nearest one joined to an
+ * entrance; anyone waiting for a spot that is no longer walkable picks another along their platform.
+ */
+function settlePeople(w: World): void {
+  const g = w.grid;
+  const p = w.people;
+  const label = regions(g);
+  const entranceRegions = new Set<number>();
+  for (const e of w.map.entrances) for (const l of labelsOf(label, rectTiles(g, e.tiles))) entranceRegions.add(l);
+  const joined = new Uint8Array(label.length);
+  for (let t = 0; t < label.length; t++) if (entranceRegions.has(label[t]!)) joined[t] = 1;
+
+  for (let i = 0, end = p.end; i < end; i++) {
+    if (!p.isAlive(i)) continue;
+    if (!g.isWalkable(Math.floor(p.x[i]!), Math.floor(p.y[i]!))) {
+      nudgeToWalkable(g, p, i, joined);
+      if (!g.isWalkable(Math.floor(p.x[i]!), Math.floor(p.y[i]!))) nudgeToWalkable(g, p, i);
+    }
+    const key = p.targetKey[i]!;
+    if (p.state[i] !== PState.Waiting || !key.startsWith("spot:")) continue;
+    const spot = Number(key.slice(5));
+    const [sx, sy] = g.xy(spot);
+    if (g.isWalkable(sx, sy)) continue;
+    const tiles = walkableTargets(w, p.goalKey[i]!);
+    p.targetKey[i] = tiles.length > 0 ? `spot:${w.rng.pick(tiles)}` : "";
+  }
+}

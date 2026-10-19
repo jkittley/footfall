@@ -183,6 +183,45 @@ export function createFacility(w: World, kind: FacilityKind, rect: Rect): Facili
   return f;
 }
 
+/**
+ * Re-reads the tiles round `f` after the grid changed. Queuers whose spot is no longer on the
+ * line walk on; the rest keep their order and are sent to their new spots.
+ */
+export function refreshAccess(w: World, f: Facility): void {
+  if (f.kind === FacilityKind.Seating) return;
+  const p = w.people;
+  f.serviceTiles = serviceTilesOf(w.grid, f.rect);
+  f.queueTiles = queueTilesOf(w.grid, f.rect, f.serviceTiles);
+  prune(p, f, PState.InFacility);
+  const line = new Set(f.queueTiles);
+  let n = 0;
+  for (const pid of f.queue) {
+    const key = p.targetKey[pid]!;
+    const spot = key.startsWith("spot:") ? Number(key.slice(5)) : tileOf(w, pid);
+    if (line.has(spot) && n < f.queueTiles.length) f.queue[n++] = pid;
+    else resume(p, pid);
+  }
+  f.queue.length = n;
+  for (let k = 0; k < n; k++) {
+    const pid = f.queue[k]!;
+    const spot = f.queueTiles[k]!;
+    if (p.targetKey[pid] !== "" || tileOf(w, pid) !== spot) p.targetKey[pid] = `spot:${spot}`;
+  }
+}
+
+/** Takes `f` down: everyone queued, served or seated there walks on, and its tiles are unzoned. */
+export function removeFacility(w: World, f: Facility): void {
+  const p = w.people;
+  prune(p, f, f.kind === FacilityKind.Seating ? PState.Seated : PState.InFacility);
+  for (const pid of f.queue) resume(p, pid);
+  for (const s of f.serving) resume(p, s.pid);
+  f.queue.length = 0;
+  f.serving.length = 0;
+  w.facilities.delete(f.id);
+  const r = f.rect;
+  for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) w.grid.setZone(x, y, Zone.None, -1);
+}
+
 export function chooseTenant(f: Facility, rng: Rng): Tenant {
   const total = f.footfall.commuter + f.footfall.leisure;
   const t = total > 0 ? f.footfall.leisure / total : 0.5;

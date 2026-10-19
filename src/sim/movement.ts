@@ -200,8 +200,11 @@ let bfsQueue = new Int32Array(0);
 let bfsSeen = new Uint32Array(0);
 let bfsStamp = 0;
 
-/** Moves person `i` to the centre of the nearest walkable tile (8-neighbour BFS); no-op if none. */
-export function nudgeToWalkable(grid: Grid, people: PeopleStore, i: number): void {
+/**
+ * Moves person `i` to the centre of the nearest walkable tile (8-neighbour BFS, so nearest by
+ * Chebyshev distance), only taking tiles marked in `allowed` when given; no-op if none.
+ */
+export function nudgeToWalkable(grid: Grid, people: PeopleStore, i: number, allowed?: Uint8Array): void {
   const w = grid.w;
   const h = grid.h;
   const sx = Math.min(w - 1, Math.max(0, Math.floor(people.x[i]!)));
@@ -225,7 +228,7 @@ export function nudgeToWalkable(grid: Grid, people: PeopleStore, i: number): voi
     const t = bfsQueue[head++]!;
     const tx = t % w;
     const ty = (t - tx) / w;
-    if (grid.isWalkable(tx, ty)) {
+    if (grid.isWalkable(tx, ty) && (allowed === undefined || allowed[t] === 1)) {
       people.x[i] = tx + 0.5;
       people.y[i] = ty + 0.5;
       return;
