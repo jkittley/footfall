@@ -93,9 +93,9 @@ export interface Toast {
   style: "note" | "day";
 }
 
-/** The toast a game event shows, if any. */
-export function toastForEvent(ev: GameEvent): Toast | null {
-  if (ev.kind === "toast") return { text: ev.text, style: "note" };
+/** The toast a game event shows, if any; none that only repeats the disruption banner's text. */
+export function toastForEvent(ev: GameEvent, bannerText: string | null = null): Toast | null {
+  if (ev.kind === "toast") return ev.text === bannerText ? null : { text: ev.text, style: "note" };
   if (ev.kind === "dayEnd") return { text: daySummaryText(ev.summary), style: "day" };
   return null;
 }

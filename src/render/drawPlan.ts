@@ -608,20 +608,22 @@ function drawPlatformLabels(ctx: CanvasRenderingContext2D, w: World, v: View): v
   }
 }
 
+/** The smallest a retail label is drawn (CSS px). */
+const RETAIL_MIN_FONT_PX = 11;
+
 /** A teal marker and the tenant's name (or the to-let countdown), wrapped onto lines as the unit allows. */
 function drawRetailLabels(ctx: CanvasRenderingContext2D, w: World, v: View): void {
-  const sizes = [clamp(12 * v.cam.zoom, 10, 14), 9];
+  // Never below RETAIL_MIN_FONT_PX: a unit too small on screen for that keeps only its marker.
+  const size = clamp(12 * v.cam.zoom, RETAIL_MIN_FONT_PX, 14);
+  const lh = size * 1.3;
+  const mark = size * 0.7;
   for (const f of w.facilities.values()) {
     if (f.kind !== FacilityKind.Retail || !rectInView(v, f.rect.x, f.rect.y, f.rect.w, f.rect.h)) continue;
     const [x, y, ww, hh] = rectPx(v, f.rect);
     const runs = retailLabel(f, w.minute);
     const room = ww - Math.max(1.5, 0.12 * v.s) * 2 - 8;
-    let drawn = false;
-    for (const size of sizes) {
-      const lines = splitRuns(ctx, runs, size, room);
-      const lh = size * 1.3;
-      if (!lines || lines.length * lh + size > hh - 6) continue;
-      const mark = size * 0.7;
+    const lines = splitRuns(ctx, runs, size, room);
+    if (lines !== null && lines.length * lh + size <= hh - 6) {
       const top = y + hh / 2 - ((lines.length * lh + mark + 3) / 2);
       ctx.fillStyle = SQUARE;
       ctx.fillRect(x + ww / 2 - mark / 2, top, mark, mark);
@@ -629,13 +631,10 @@ function drawRetailLabels(ctx: CanvasRenderingContext2D, w: World, v: View): voi
         const lwid = runsWidth(ctx, line, size);
         drawRuns(ctx, line, x + ww / 2 - lwid / 2, top + mark + 3 + lh * (i + 0.5), size);
       });
-      drawn = true;
-      break;
-    }
-    if (!drawn) {
-      const mark = clamp(0.5 * v.s, 4, 10);
+    } else {
+      const dot = clamp(0.5 * v.s, 4, 10);
       ctx.fillStyle = SQUARE;
-      ctx.fillRect(x + ww / 2 - mark / 2, y + hh / 2 - mark / 2, mark, mark);
+      ctx.fillRect(x + ww / 2 - dot / 2, y + hh / 2 - dot / 2, dot, dot);
     }
   }
 }

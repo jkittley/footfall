@@ -46,10 +46,11 @@ export class Hud {
   private readonly scrim = el("div", "scrim");
   private readonly cancelButton: HTMLButtonElement;
   private upkeepKey = "";
+  private readonly panels: HTMLElement[];
   private returnFocus: HTMLElement | null = null;
 
   constructor(root: HTMLElement, private readonly actions: HudActions) {
-    const score = el("div", "hud-score");
+    const score = el("div", "hud-score panel");
     this.meterBar.append(this.meterFill);
     const meter = el("div", "hud-meter");
     meter.append(this.meterBar, this.meterText);
@@ -92,7 +93,7 @@ export class Hud {
     clockRow.append(clock, speed);
     const money = el("div", "hud-money");
     money.append(this.balance, this.today, this.upkeep, this.holiday);
-    const right = el("div", "hud-right");
+    const right = el("div", "hud-right panel");
     right.append(clockRow, money);
 
     this.banner.hidden = true;
@@ -123,8 +124,31 @@ export class Hud {
     this.scrim.addEventListener("click", (e) => {
       if (e.target === this.scrim) this.closeConfirm();
     });
+    // Tab stays on the dialog's buttons while it is open.
+    panel.addEventListener("keydown", (e) => {
+      if (e.key !== "Tab") return;
+      const buttons = [...panel.querySelectorAll("button")];
+      const first = buttons[0];
+      const last = buttons[buttons.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+      }
+    });
+    document.addEventListener("pointerdown", (e) => {
+      if (this.menuOpen && e.target instanceof Node && !menu.contains(e.target)) this.toggleMenu(false);
+    });
 
+    this.panels = [score, right];
     root.append(score, right, this.banner, this.toasts, this.scrim);
+  }
+
+  /** The lowest screen y (CSS px) the HUD's panels reach. */
+  bottom(): number {
+    return Math.max(...this.panels.map((p) => p.getBoundingClientRect().bottom));
   }
 
   get confirmOpen(): boolean {

@@ -11,7 +11,16 @@ import { Input } from "./input";
 import { Inspector, ShopPanel, Tip } from "./inspector";
 import { planFrame, type Speed } from "./loop";
 import { clearSave, loadSave, stashCorruptSave, writeSave } from "./storage";
+import { stationBounds } from "./framing";
 import { ToolRail } from "./toolRail";
+
+/** The first view's zoom range, so people are clearly visible. */
+const FRAME_MIN_ZOOM = 1.5;
+const FRAME_MAX_ZOOM = 2;
+/** Tiles of ground round the station in the first view. */
+const FRAME_PAD_TILES = 2;
+/** Gap (CSS px) kept between the HUD and the framed station, and at the free screen edges. */
+const HUD_GAP = 16;
 
 function newSeed(): number {
   return Math.floor(Math.random() * 2 ** 31);
@@ -53,11 +62,13 @@ export function startGame(canvas: HTMLCanvasElement): void {
     inspector.close();
     shop.close();
     ui.selectedPerson = null;
+    renderer.refit();
     save();
     window.__world = w;
   }
 
-  const rail = new ToolRail(layer, () => {
+  const rail = new ToolRail(layer, (toolChanged) => {
+    if (!toolChanged) return;
     input.cancel();
     if (rail.tool) {
       inspector.close();
@@ -105,6 +116,21 @@ export function startGame(canvas: HTMLCanvasElement): void {
     refused: (reason) => hud.toast({ text: reason, style: "note" }),
   });
 
+  /** The camera may pan the map out from under the rail and the HUD. */
+  function updateInsets(): void {
+    renderer.camera.setInsets(rail.right() + HUD_GAP, hud.bottom() + HUD_GAP, HUD_GAP, HUD_GAP);
+  }
+  renderer.initialFrame = (cam, world) => {
+    updateInsets();
+    const r = stationBounds(world.grid);
+    if (!r) return cam.fit();
+    // A station too tall to show whole at a zoom where people are clear is framed on its concourse.
+    if (cam.frame(r, FRAME_PAD_TILES, FRAME_MIN_ZOOM, FRAME_MAX_ZOOM)) return;
+    const floor = stationBounds(world.grid, true);
+    if (floor) cam.frame(floor, FRAME_PAD_TILES, FRAME_MIN_ZOOM, FRAME_MAX_ZOOM);
+  };
+  window.addEventListener("resize", updateInsets);
+
   if (boot.notice) hud.toast({ text: boot.notice, style: "note" });
   window.addEventListener("pagehide", save);
   document.addEventListener("visibilitychange", () => {
@@ -120,9 +146,10 @@ export function startGame(canvas: HTMLCanvasElement): void {
     for (let k = 0; k < plan.steps; k++) step(w, SIM_DT);
 
     let wantSave = false;
+    const banner = w.disruptions.find((d) => !d.ended)?.text ?? null;
     for (const ev of w.events) {
       if (ev.kind === "autosave") wantSave = true;
-      const t = toastForEvent(ev);
+      const t = toastForEvent(ev, banner);
       if (t) hud.toast(t);
     }
     w.events.length = 0;

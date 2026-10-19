@@ -8,8 +8,8 @@ const WHEEL_RATE = 0.0015;
 /**
  * Maps world tiles to CSS pixels: `x`, `y` are the world tile at the view's top-left corner and
  * zoom 1 is TILE_PX CSS px per tile. Device pixels are the canvas's concern, not the camera's.
- * Once given bounds and a viewport, every move keeps the view on the map (within MARGIN_TILES),
- * centring the map on any axis it does not fill.
+ * Once given bounds and a viewport, every move keeps the view on the map (within MARGIN_TILES,
+ * plus the screen insets the HUD covers), centring the map on any axis it does not fill.
  */
 export class Camera {
   static readonly MARGIN_TILES = 4;
@@ -22,6 +22,8 @@ export class Camera {
   /** Map size in tiles; 0 leaves the camera unbounded. */
   mapW = 0;
   mapH = 0;
+  /** Screen edges (CSS px) covered by the HUD, which the map may be panned out from under. */
+  insets = { left: 0, top: 0, right: 0, bottom: 0 };
 
   /** CSS px per tile. */
   get scale(): number {
@@ -48,6 +50,31 @@ export class Camera {
     this.mapW = mapW;
     this.mapH = mapH;
     this.clamp();
+  }
+
+  setInsets(left: number, top: number, right: number, bottom: number): void {
+    this.insets = { left, top, right, bottom };
+    this.clamp();
+  }
+
+  /**
+   * Shows the world rect (plus `pad` tiles round it) as large as fits in the view inside the
+   * insets, zoom held to minZoom..maxZoom, its centre on the centre of that free area. False if
+   * it did not all fit (minZoom was too close).
+   */
+  frame(r: { x: number; y: number; w: number; h: number }, pad: number, minZoom: number, maxZoom: number): boolean {
+    if (this.viewW <= 0) return false;
+    const { left, top, right, bottom } = this.insets;
+    const freeW = Math.max(1, this.viewW - left - right);
+    const freeH = Math.max(1, this.viewH - top - bottom);
+    const fit = Math.min(freeW / ((r.w + 2 * pad) * TILE_PX), freeH / ((r.h + 2 * pad) * TILE_PX));
+    const lo = Math.max(MIN_ZOOM, minZoom);
+    const hi = Math.min(MAX_ZOOM, maxZoom);
+    this.zoom = Math.min(hi, Math.max(lo, fit));
+    this.x = r.x + r.w / 2 - (left + freeW / 2) / this.scale;
+    this.y = r.y + r.h / 2 - (top + freeH / 2) / this.scale;
+    this.clamp();
+    return fit >= this.zoom;
   }
 
   /** Drags the world by (dx, dy) CSS px. */
@@ -83,13 +110,18 @@ export class Camera {
 
   private clamp(): void {
     if (this.mapW <= 0 || this.viewW <= 0) return;
-    this.x = clampAxis(this.x, this.viewW / this.scale, this.mapW);
-    this.y = clampAxis(this.y, this.viewH / this.scale, this.mapH);
+    const s = this.scale;
+    const { left, top, right, bottom } = this.insets;
+    this.x = clampAxis(this.x, this.viewW / s, this.mapW, left / s, right / s);
+    this.y = clampAxis(this.y, this.viewH / s, this.mapH, top / s, bottom / s);
   }
 }
 
-function clampAxis(at: number, view: number, size: number): number {
+/** The view's start on one axis, kept so the map (with its margin, and room to clear the insets) stays in view. */
+function clampAxis(at: number, view: number, size: number, padLo: number, padHi: number): number {
   const m = Camera.MARGIN_TILES;
-  if (view >= size + 2 * m) return (size - view) / 2;
-  return Math.min(size + m - view, Math.max(-m, at));
+  const lo = -m - padLo;
+  const hi = size + m + padHi - view;
+  if (hi <= lo) return (size - view + padHi - padLo) / 2;
+  return Math.min(hi, Math.max(lo, at));
 }

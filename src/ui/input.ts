@@ -2,8 +2,8 @@ import type { Camera } from "../render/camera";
 import type { UiOverlayState } from "../render/renderer";
 import { applyPlacement, previewPlacement, type PlacementPreview } from "../sim/build";
 import { FacilityKind } from "../sim/facilityKinds";
-import type { Rect } from "../sim/grid";
 import type { World } from "../sim/world";
+import { dragRect } from "./drag";
 import { placementTooltip } from "./format";
 import type { Tip } from "./inspector";
 import type { Speed } from "./loop";
@@ -52,6 +52,8 @@ export class Input {
   private spaceDown = false;
   private spaceDragged = false;
   private previewKey = "";
+  /** Whether the balance covered the current preview's cost when it was made. */
+  private previewAfford = false;
 
   constructor(private readonly host: InputHost) {
     const c = host.canvas;
@@ -93,12 +95,14 @@ export class Input {
     ui.hoverTile = null;
     const tile = this.pointer ? this.tileAt(this.pointer[0], this.pointer[1]) : null;
     if (this.press?.kind === "build" && rail.tool) {
-      const rect = this.buildRect(this.press);
+      const p = this.press;
+      const rect = dragRect(rail.tool, [p.startX, p.startY], [p.endX, p.endY]);
       const opts = rail.opts();
-      const key = `${rail.tool}|${rect.x},${rect.y},${rect.w},${rect.h}|${opts.signKind}|${opts.dir}|${w.grid.version}|${Math.round(w.ledger.balance)}`;
-      if (key !== this.previewKey || !ui.preview) {
+      const key = `${rail.tool}|${rect.x},${rect.y},${rect.w},${rect.h}|${opts.signKind}|${opts.dir}|${w.grid.version}`;
+      if (key !== this.previewKey || !ui.preview || w.ledger.canAfford(ui.preview.cost) !== this.previewAfford) {
         this.previewKey = key;
         ui.preview = previewPlacement(w, rail.tool, rect, opts);
+        this.previewAfford = w.ledger.canAfford(ui.preview.cost);
       }
       const t = placementTooltip(ui.preview, w.ledger.balance);
       if (this.pointer) tip.show(this.pointer[0], this.pointer[1], t.text, t.reason);
@@ -116,7 +120,8 @@ export class Input {
       return;
     }
     const pid = this.personAt(this.pointer[0], this.pointer[1]);
-    if (pid === null) tip.hide();
+    // The selected person already has their card open.
+    if (pid === null || pid === ui.selectedPerson) tip.hide();
     else tip.show(this.pointer[0], this.pointer[1], goalLine(goalFacts(w, pid)), null, true);
   }
 
@@ -204,23 +209,6 @@ export class Input {
         return;
       }
     }
-  }
-
-  /** The drag's rect in tiles: one tile for a sign, a straight line for walls, rails and travelators. */
-  private buildRect(p: Extract<Press, { kind: "build" }>): Rect {
-    const tool = this.host.rail.tool;
-    if (tool === "sign") return { x: p.endX, y: p.endY, w: 1, h: 1 };
-    let { endX, endY } = p;
-    if (tool === "wall" || tool === "rail" || tool === "travelator") {
-      if (Math.abs(endX - p.startX) >= Math.abs(endY - p.startY)) endY = p.startY;
-      else endX = p.startX;
-    }
-    return {
-      x: Math.min(p.startX, endX),
-      y: Math.min(p.startY, endY),
-      w: Math.abs(endX - p.startX) + 1,
-      h: Math.abs(endY - p.startY) + 1,
-    };
   }
 
   private tileAt(sx: number, sy: number): [number, number] | null {

@@ -16,15 +16,23 @@
 .ui [hidden] { display: none !important; }
 .ui :focus-visible { outline: 3px solid var(--circle); outline-offset: 2px; }
 
+/* The HUD's backing panels, so text stays readable over people and trains. */
+.panel {
+  background: var(--panel);
+  border: 2px solid var(--track);
+  border-radius: 16px;
+}
+
 /* HUD: score, top left */
 .hud-score {
   position: absolute;
-  left: 32px;
-  top: 26px;
+  left: 20px;
+  top: 16px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: 200px;
+  width: 228px;
+  padding: 12px 14px 14px;
 }
 .hud-venue { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
 .hud-moved { font-size: 32px; line-height: 1.05; }
@@ -38,12 +46,13 @@
 /* HUD: clock, speed and money, top right */
 .hud-right {
   position: absolute;
-  right: 32px;
-  top: 26px;
+  right: 20px;
+  top: 16px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 14px;
+  padding: 12px 14px 14px;
 }
 .hud-clockrow { display: flex; align-items: center; gap: 20px; }
 .hud-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
@@ -99,15 +108,16 @@
 /* Tool rail, left edge */
 .rail {
   position: absolute;
-  left: 32px;
-  top: 186px;
-  bottom: 16px;
+  left: 20px;
+  top: 198px;
+  max-height: calc(100vh - 214px);
   display: flex;
   flex-direction: column;
   flex-wrap: wrap;
   align-content: flex-start;
   gap: 10px;
-  pointer-events: none;
+  padding: 10px;
+  pointer-events: auto;
 }
 .tool {
   pointer-events: auto;

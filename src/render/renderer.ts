@@ -35,6 +35,8 @@ export interface RenderStats {
 export class Renderer {
   readonly camera = new Camera();
   readonly stats: RenderStats = { drawMs: 0, staticMs: 0, staticDraws: 0 };
+  /** Frames the first view (once the canvas has a size, and again after refit()); the whole map if unset. */
+  initialFrame: ((cam: Camera, w: World) => void) | null = null;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly layer: HTMLCanvasElement;
   private readonly layerCtx: CanvasRenderingContext2D;
@@ -127,9 +129,15 @@ export class Renderer {
     if (cam.mapW !== w.grid.w || cam.mapH !== w.grid.h) cam.setBounds(w.grid.w, w.grid.h);
     if (cam.viewW !== cssW || cam.viewH !== cssH) cam.setViewport(cssW, cssH);
     if (!this.fitted && cssW > 0) {
-      cam.fit();
+      if (this.initialFrame) this.initialFrame(cam, w);
+      else cam.fit();
       this.fitted = true;
     }
+  }
+
+  /** Frames the view afresh on the next draw (a new game). */
+  refit(): void {
+    this.fitted = false;
   }
 }
 

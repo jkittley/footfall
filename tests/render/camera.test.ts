@@ -89,4 +89,54 @@ describe("Camera", () => {
     expect(r).toBeGreaterThanOrEqual(120);
     expect(b).toBeGreaterThanOrEqual(90);
   });
+
+  it("lets the map pan out from under screen insets (CSS px) on each side", () => {
+    const cam = new Camera();
+    cam.setBounds(120, 90);
+    cam.setViewport(800, 600);
+    cam.zoom = 2; // 32 px a tile
+    cam.setInsets(128, 64, 0, 0);
+    cam.pan(1e6, 1e6);
+    // The map's left edge can sit right of the 128px rail, plus the usual margin.
+    expect(cam.x).toBeCloseTo(-Camera.MARGIN_TILES - 128 / 32, 9);
+    expect(cam.y).toBeCloseTo(-Camera.MARGIN_TILES - 64 / 32, 9);
+    cam.pan(-1e6, -1e6);
+    const [right, bottom] = cam.screenToWorld(800, 600);
+    expect(right).toBeCloseTo(120 + Camera.MARGIN_TILES, 9);
+    expect(bottom).toBeCloseTo(90 + Camera.MARGIN_TILES, 9);
+  });
+
+  it("frames a rect in the area inside the insets, zoom held to the given range", () => {
+    const cam = new Camera();
+    cam.setBounds(120, 90);
+    cam.setViewport(1180, 1000);
+    cam.setInsets(120, 200, 16, 16);
+    cam.frame({ x: 50, y: 40, w: 15, h: 25 }, 2, 1.5, 2);
+    expect(cam.zoom).toBeGreaterThanOrEqual(1.5);
+    expect(cam.zoom).toBeLessThanOrEqual(2);
+    // The rect's centre lands on the centre of the free area.
+    const [cx, cy] = cam.worldToScreen(50 + 15 / 2, 40 + 25 / 2);
+    expect(cx).toBeCloseTo(120 + (1180 - 120 - 16) / 2, 6);
+    expect(cy).toBeCloseTo(200 + (1000 - 200 - 16) / 2, 6);
+  });
+
+  it("frames a rect at the map's edge clear of the insets, as near the centre as the clamp allows", () => {
+    const cam = new Camera();
+    cam.setBounds(120, 90);
+    cam.setViewport(1180, 1000);
+    cam.setInsets(120, 200, 16, 16);
+    expect(cam.frame({ x: 1, y: 24, w: 15, h: 55 }, 2, 1.5, 2)).toBe(false);
+    expect(cam.zoom).toBe(1.5);
+    const [left] = cam.worldToScreen(1, 0);
+    expect(left).toBeGreaterThan(120);
+    expect(left).toBeLessThan(1180 / 2);
+  });
+
+  it("frames a small rect at the top of the zoom range", () => {
+    const cam = new Camera();
+    cam.setBounds(120, 90);
+    cam.setViewport(1180, 1000);
+    expect(cam.frame({ x: 10, y: 10, w: 4, h: 4 }, 1, 1.5, 2)).toBe(true);
+    expect(cam.zoom).toBe(2);
+  });
 });

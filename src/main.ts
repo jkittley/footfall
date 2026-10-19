@@ -2,7 +2,7 @@ import { ALERT, CIRCLE, FLOOR, GROUND, INK, INK_2, NIGHT, TRACK, WALL, hexToUnit
 
 // Page colours come from the one palette, as CSS variables the stylesheet reads.
 const root = document.documentElement.style;
-const [nr, ng, nb] = hexToUnit(NIGHT).map((c) => Math.round(c * 255));
+const rgb = (hex: string): string => hexToUnit(hex).map((c) => Math.round(c * 255)).join(",");
 for (const [name, value] of Object.entries({
   "--ground": GROUND,
   "--floor": FLOOR,
@@ -12,7 +12,8 @@ for (const [name, value] of Object.entries({
   "--ink-2": INK_2,
   "--alert": ALERT,
   "--circle": CIRCLE,
-  "--scrim": `rgba(${nr},${ng},${nb},0.35)`,
+  "--scrim": `rgba(${rgb(NIGHT)},0.35)`,
+  "--panel": `rgba(${rgb(FLOOR)},0.92)`,
 })) {
   root.setProperty(name, value);
 }

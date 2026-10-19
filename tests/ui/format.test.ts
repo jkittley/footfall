@@ -116,3 +116,10 @@ test("events become toasts; outcomes and autosaves do not", () => {
   expect(toastForEvent({ kind: "outcome", personId: 1, onTime: true, excluded: false })).toBeNull();
   expect(toastForEvent({ kind: "autosave" })).toBeNull();
 });
+
+test("a toast that repeats the disruption banner is skipped", () => {
+  const text = "Signal failure at Ashby: Platform 2 closed until 11:20";
+  expect(toastForEvent({ kind: "toast", text }, text)).toBeNull();
+  expect(toastForEvent({ kind: "toast", text: "Platform 2 reopens" }, text)).toEqual({ text: "Platform 2 reopens", style: "note" });
+  expect(toastForEvent({ kind: "toast", text }, null)).toEqual({ text, style: "note" });
+});

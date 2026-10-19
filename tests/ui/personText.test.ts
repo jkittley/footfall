@@ -1,6 +1,9 @@
 import { expect, test } from "vitest";
 import { DestLabel, Journey, Need, PState } from "../../src/sim/people";
-import { errandLine, goalLine, timeLeftIsShort, NEED_LABELS } from "../../src/ui/personText";
+import { walkMinutes } from "../../src/sim/routeField";
+import { fieldFor } from "../../src/sim/walk";
+import { createWorld } from "../../src/sim/world";
+import { errandLine, goalFacts, goalLine, timeLeftIsShort, walkFromHere, NEED_LABELS } from "../../src/ui/personText";
 
 const at = (h: number, m: number): number => 1440 * 3 + h * 60 + m;
 
@@ -51,4 +54,51 @@ test("errand lines", () => {
 
 test("six need bars, in need order", () => {
   expect(NEED_LABELS).toEqual(["Hunger", "Thirst", "Tired", "Toilet", "Browse", "Charge"]);
+});
+
+test("goalFacts reads a departing passenger's service off the world", () => {
+  const w = createWorld(3);
+  const svc = w.timetable.upcoming(1, w.minute)[0]!;
+  const i = w.people.alloc();
+  w.people.x[i] = 10.5;
+  w.people.y[i] = 56.5;
+  w.people.journey[i] = Journey.Departing;
+  w.people.goalKey[i] = "platform:1";
+  w.people.serviceId[i] = svc.id;
+  w.people.deadline[i] = svc.departAt;
+  const g = goalFacts(w, i);
+  expect(g.service).toEqual({ departAt: svc.departAt, destination: svc.destination, platformId: 1 });
+  expect(g.platformId).toBe(1);
+  expect(g.exitName).toBeNull();
+  expect(goalLine(g)).toMatch(new RegExp(`^Catch the \\d\\d:\\d\\d to ${svc.destination}, Platform 1$`));
+});
+
+test("goalFacts names the entrance an arriving passenger leaves by", () => {
+  const w = createWorld(3);
+  const i = w.people.alloc();
+  w.people.x[i] = 10.5;
+  w.people.y[i] = 70.5;
+  w.people.journey[i] = Journey.Arriving;
+  w.people.goalKey[i] = "exit:C";
+  w.people.destLabel[i] = DestLabel.Work;
+  w.people.deadline[i] = 3 * 1440 + 9 * 60 + 10;
+  expect(goalLine(goalFacts(w, i))).toBe("Leave by Quay Lane, going to work by 09:10");
+});
+
+test("walkFromHere is the unimpeded walk to the goal, or 0 when there is none", () => {
+  const w = createWorld(3);
+  const i = w.people.alloc();
+  w.people.x[i] = 10.5;
+  w.people.y[i] = 70.5;
+  w.people.goalKey[i] = "exit:A";
+  const expected = walkMinutes(fieldFor(w, "exit:A"), w.grid.idx(10, 70));
+  expect(expected).toBeGreaterThan(0);
+  expect(walkFromHere(w, i)).toBeCloseTo(expected, 9);
+  w.people.goalKey[i] = "";
+  expect(walkFromHere(w, i)).toBe(0);
+  // Standing on ground the goal can't be reached from.
+  w.people.goalKey[i] = "exit:A";
+  w.people.x[i] = 60.5;
+  w.people.y[i] = 40.5;
+  expect(walkFromHere(w, i)).toBe(0);
 });

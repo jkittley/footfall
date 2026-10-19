@@ -51,8 +51,11 @@ export class ToolRail {
   private readonly dirArrow = el("span");
   private readonly dirText = el("span");
 
-  constructor(root: HTMLElement, private readonly onChange: () => void) {
-    const rail = el("div", "rail");
+  private readonly rail = el("div", "rail panel");
+
+  /** `onChange(toolChanged)`: true when the tool itself changed, false for a new sign kind or direction. */
+  constructor(root: HTMLElement, private readonly onChange: (toolChanged: boolean) => void) {
+    const rail = this.rail;
     rail.setAttribute("role", "toolbar");
     rail.setAttribute("aria-label", "Build tools");
     for (const t of TOOLS) {
@@ -80,25 +83,31 @@ export class ToolRail {
 
     root.append(rail, this.signOptions, this.dirOptions);
     this.refresh();
+    window.addEventListener("resize", () => this.refresh());
+  }
+
+  /** The rail panel's right edge (CSS px). */
+  right(): number {
+    return this.rail.getBoundingClientRect().right;
   }
 
   select(tool: ToolId | null): void {
     this.tool = tool;
     this.refresh();
-    this.onChange();
+    this.onChange(true);
   }
 
   setSignKind(kind: Sign["kind"]): void {
     this.signKind = kind;
     this.refresh();
-    this.onChange();
+    this.onChange(false);
   }
 
   /** The travelator turns a quarter clockwise. */
   rotate(): void {
     this.dir = DIR_ORDER[(DIR_ORDER.indexOf(this.dir) + 1) % DIR_ORDER.length]!;
     this.refresh();
-    this.onChange();
+    this.onChange(false);
   }
 
   opts(): BuildOpts {

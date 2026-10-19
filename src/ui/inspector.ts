@@ -33,6 +33,8 @@ export class Inspector {
   private readonly errand = el("div");
   private readonly needs = el("div", "needs");
   private readonly needBars: HTMLElement[] = [];
+  /** Each bar's last written percentage, so unchanged bars aren't restyled every frame. */
+  private readonly needShown: number[] = [];
   private readonly details = el("div");
 
   constructor(root: HTMLElement, private readonly onClose: () => void) {
@@ -107,9 +109,11 @@ export class Inspector {
     this.errand.hidden = errand === null;
     setText(this.errand, errand ?? "");
     for (let n = 0; n < NEED_COUNT; n++) {
-      const level = Math.min(1, Math.max(0, p.needs[pid * NEED_COUNT + n]!));
-      this.needBars[n]!.style.width = `${level * 100}%`;
-      this.needBars[n]!.parentElement?.setAttribute("aria-valuenow", String(Math.round(level * 100)));
+      const pct = Math.round(Math.min(1, Math.max(0, p.needs[pid * NEED_COUNT + n]!)) * 100);
+      if (this.needShown[n] === pct) continue;
+      this.needShown[n] = pct;
+      this.needBars[n]!.style.width = `${pct}%`;
+      this.needBars[n]!.parentElement?.setAttribute("aria-valuenow", String(pct));
     }
 
     const [x, y] = cam.worldToScreen(p.x[pid]!, p.y[pid]!);
