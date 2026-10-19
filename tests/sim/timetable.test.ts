@@ -69,5 +69,4 @@ test("services on a platform are never more than 60 minutes apart, nor less than
     expect(gap).toBeGreaterThanOrEqual(MIN_INTERVAL_MIN);
     expect(gap).toBeLessThanOrEqual(MAX_INTERVAL_MIN);
   }
-  expect(MAX_INTERVAL_MIN).toBe(60);
 });

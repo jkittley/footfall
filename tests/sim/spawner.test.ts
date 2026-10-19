@@ -1,20 +1,56 @@
 import { expect, test } from "vitest";
-import { MIN_SLACK_MINUTES } from "../../src/sim/constants";
-import { Tile } from "../../src/sim/grid";
+import { GAME_MIN_PER_REAL_SEC, MIN_SLACK_MINUTES, SIM_DT, WALK_TILES_PER_SEC } from "../../src/sim/constants";
+import { Tile, type Grid } from "../../src/sim/grid";
+import { HARBOUR_STREET, buildGrid } from "../../src/sim/maps/harbourStreet";
 import { Journey, PState } from "../../src/sim/people";
 import { Rng } from "../../src/sim/rng";
-import { onTrainArrived, sampleSlack } from "../../src/sim/spawner";
-import { createWorld, step, type World } from "../../src/sim/world";
-import { SIM_DT } from "../../src/sim/constants";
+import { computeField } from "../../src/sim/routeField";
+import { onTrainArrived, reachableEntrances, sampleSlack } from "../../src/sim/spawner";
+import { stepTrains } from "../../src/sim/trains";
+import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
 import { entranceTiles, platformTiles, runMinutes, type XY } from "./helpers";
 
+// Fields computed here from scratch, per grid and layout version, never through the world's cache.
+const fieldMemo = new WeakMap<Grid, Map<string, Float32Array>>();
+
+function freshField(grid: Grid, key: string, targets: readonly number[]): Float32Array {
+  let byKey = fieldMemo.get(grid);
+  if (!byKey) fieldMemo.set(grid, (byKey = new Map()));
+  const k = `${key}@${grid.version}`;
+  let f = byKey.get(k);
+  if (!f) byKey.set(k, (f = computeField(grid, targets)));
+  return f;
+}
+
+/** Unimpeded walk minutes, Float32-rounded, from a tile to a goal on `grid` as it stands. */
+function walkFrom(grid: Grid, w: World, goalKey: string, tile: number): number {
+  const field = freshField(grid, goalKey, fieldTargets(w, goalKey));
+  return Math.fround((field[tile]! / WALK_TILES_PER_SEC) * GAME_MIN_PER_REAL_SEC);
+}
+
+function tileOf(w: World, i: number): number {
+  return w.grid.idx(Math.floor(w.people.x[i]!), Math.floor(w.people.y[i]!));
+}
+
+/**
+ * Checks person `i` on the step they spawn: spawnWalk is their real unimpeded walk on the layout
+ * as it stands, measured from where they stand, and the deadline leaves it plus MIN_SLACK_MINUTES.
+ */
 function expectFair(w: World, i: number): void {
   const p = w.people;
+  const walk = walkFrom(w.grid, w, p.goalKey[i]!, tileOf(w, i));
+  expect(Number.isFinite(walk)).toBe(true);
+  expect(p.spawnWalk[i]).toBe(walk);
+  if (p.journey[i] === Journey.Connecting) expect(p.spawnWalk[i]).toBeGreaterThan(0);
   expect(p.deadline[i]! - p.spawnedAt[i]!).toBeGreaterThanOrEqual(p.spawnWalk[i]! + MIN_SLACK_MINUTES - 1e-6);
 }
 
 function inTiles(tiles: XY[], x: number, y: number): boolean {
   return tiles.some(([tx, ty]) => tx === Math.floor(x) && ty === Math.floor(y));
+}
+
+function isWalkableAt(w: World, x: number, y: number): boolean {
+  return w.grid.isWalkable(Math.floor(x), Math.floor(y));
 }
 
 test("sampleSlack stays within 3 to 120 minutes, in the stated proportions", () => {
@@ -35,13 +71,43 @@ test("sampleSlack stays within 3 to 120 minutes, in the stated proportions", () 
 
 test("every spawned person has a fair deadline", () => {
   const w = createWorld(3);
-  runMinutes(w, 8 * 60); // through the morning peak
+  const until = w.minute + 8 * 60; // through the morning peak
+  const seen = new Set<Journey>();
   let checked = 0;
+  while (w.minute < until) {
+    step(w, SIM_DT);
+    w.people.forEachAlive((i) => {
+      if (w.people.spawnedAt[i] !== w.minute) return;
+      expectFair(w, i);
+      seen.add(w.people.journey[i]!);
+      checked++;
+    });
+  }
+  expect(checked).toBeGreaterThan(200);
+  expect([...seen].sort()).toEqual([Journey.Departing, Journey.Arriving, Journey.Connecting]);
+});
+
+test("spawn walks are measured on the layout as built at spawn", () => {
+  const plain = buildGrid(HARBOUR_STREET, HARBOUR_STREET.startingPlatforms);
+  const w = createWorld(10);
+  const s = w.timetable.upcoming(1, w.minute)[0]!;
+  w.minute = s.arriveAt;
+  s.alighting = 20;
+  onTrainArrived(w, s); // warms the world's field cache on the open layout
+  // A wall across the concourse leaves one gap at its east end: the way to Harbour Road gets longer.
+  for (let x = 6; x <= 14; x++) w.grid.setTile(x, 58, Tile.Wall);
+  w.minute += 1;
+  s.alighting = 120;
+  onTrainArrived(w, s);
+  let detoured = 0;
   w.people.forEachAlive((i) => {
+    if (w.people.spawnedAt[i] !== w.minute) return;
     expectFair(w, i);
-    checked++;
+    if (w.people.goalKey[i] !== "exit:A") return;
+    expect(w.people.spawnWalk[i]).toBeGreaterThan(walkFrom(plain, w, "exit:A", tileOf(w, i)) + 1);
+    detoured++;
   });
-  expect(checked).toBeGreaterThan(50);
+  expect(detoured).toBeGreaterThan(20);
 });
 
 test("an unobstructed station has a very high on-time rate", () => {
@@ -110,6 +176,14 @@ test("arriving passengers leave by an exit with an outcome; departing ones wait 
   expect(waiting).toBeGreaterThan(0);
 });
 
+test("only entrances with a route to a platform take departing passengers", () => {
+  const w = createWorld(8);
+  // Quay Lane has no floor to it yet.
+  expect(reachableEntrances(w).map((e) => e.id)).toEqual(["A", "B"]);
+  for (let y = 55; y < 58; y++) w.grid.setTile(1, y, Tile.Wall);
+  expect(reachableEntrances(w).map((e) => e.id)).toEqual(["A"]);
+});
+
 test("no spawns from an unreachable entrance", () => {
   const w = createWorld(8);
   // Wall the strip of floor leading in from Market Place.
@@ -126,4 +200,70 @@ test("no spawns from an unreachable entrance", () => {
     });
   }
   expect(spawned).toBeGreaterThan(0);
+});
+
+test("people are only put on, and sent to, walkable platform tiles", () => {
+  const w = createWorld(11);
+  // Something built over the far end of platform 1.
+  for (const [x, y] of platformTiles(1)) if (y < 44) w.grid.setTile(x, y, Tile.Wall);
+  const s = w.timetable.upcoming(1, w.minute)[0]!;
+  w.minute = s.arriveAt;
+  s.alighting = 100;
+  const before = w.people.count;
+  onTrainArrived(w, s);
+  // Everyone gets off: nobody is dropped for having been put on a tile they cannot walk from.
+  expect(w.people.count - before).toBe(100);
+  w.people.forEachAlive((i) => expect(isWalkableAt(w, w.people.x[i]!, w.people.y[i]!)).toBe(true));
+
+  const walkers: number[] = [];
+  for (let n = 0; n < 30; n++) {
+    const i = w.people.alloc();
+    w.people.x[i] = 9.5;
+    w.people.y[i] = 53.5;
+    w.people.state[i] = PState.Walking;
+    w.people.goalKey[i] = "platform:1";
+    w.people.targetKey[i] = "platform:1";
+    walkers.push(i);
+  }
+  step(w, SIM_DT);
+  for (const i of walkers) {
+    expect(w.people.state[i]).toBe(PState.Waiting);
+    const spot = Number(w.people.targetKey[i]!.slice("spot:".length));
+    expect(w.grid.isWalkable(spot % w.grid.w, Math.floor(spot / w.grid.w))).toBe(true);
+  }
+});
+
+test("a passenger who misses the last service heads for an exit, counted once", () => {
+  const w = createWorld(12);
+  const s = w.timetable.upcoming(1, w.minute)[0]!;
+  for (const [id, other] of w.timetable.services) if (other.platformId === 1 && other.departAt > s.departAt) w.timetable.services.delete(id);
+  const i = w.people.alloc();
+  w.people.x[i] = 10.5;
+  w.people.y[i] = 70.5;
+  w.people.state[i] = PState.Walking;
+  w.people.journey[i] = Journey.Departing;
+  w.people.goalKey[i] = "platform:1";
+  w.people.targetKey[i] = "platform:1";
+  w.people.serviceId[i] = s.id;
+  w.minute = s.departAt + 0.01;
+  w.trainsUpTo = s.departAt - 0.01;
+  stepTrains(w);
+
+  const p = w.people;
+  expect(p.isAlive(i)).toBe(true);
+  expect(p.counted[i]).toBe(1);
+  expect(p.journey[i]).toBe(Journey.Arriving);
+  expect(p.state[i]).toBe(PState.Walking);
+  expect(p.serviceId[i]).toBe(-1);
+  expect(p.goalKey[i]).toMatch(/^exit:[AB]$/);
+  expect(p.targetKey[i]).toBe(p.goalKey[i]);
+  const walk = walkFrom(w.grid, w, p.goalKey[i]!, tileOf(w, i));
+  expect(p.deadline[i]! - w.minute).toBeGreaterThanOrEqual(walk + MIN_SLACK_MINUTES - 1e-6);
+
+  const mine = () => w.events.filter((e) => e.kind === "outcome" && e.personId === i).length;
+  expect(mine()).toBe(1);
+  const until = w.minute + 120;
+  while (p.isAlive(i) && w.minute < until) step(w, SIM_DT);
+  expect(p.isAlive(i)).toBe(false);
+  expect(mine()).toBe(1);
 });

@@ -4,7 +4,7 @@ import { DestLabel, Journey, Mode, NEED_COUNT, PState } from "./people";
 import type { Rng } from "./rng";
 import { walkMinutes } from "./routeField";
 import type { Service } from "./timetable";
-import { activePlatformIds, fieldTargets, type World } from "./world";
+import { activePlatformIds, fieldTargets, walkableTargets, type World } from "./world";
 
 /** A passenger is booked onto one of the first this-many services that fit their deadline. */
 const SERVICE_CHOICES = 3;
@@ -90,6 +90,25 @@ function spawnBooked(w: World, tile: number, journey: Journey, booking: { servic
   w.people.serviceId[i] = s.id;
 }
 
+/**
+ * Entrances departing passengers can come in by: each with its tiles that route to some active
+ * platform. An entrance with none is left out, so its share of passengers goes to the others.
+ */
+export function reachableEntrances(
+  w: World,
+  fields: ReadonlyMap<number, Float32Array> = platformFields(w, activePlatformIds(w)),
+): { id: string; tiles: number[]; weight: number }[] {
+  const out: { id: string; tiles: number[]; weight: number }[] = [];
+  for (const e of w.map.entrances) {
+    const tiles = walkableTargets(w, `exit:${e.id}`).filter((t) => {
+      for (const f of fields.values()) if (Number.isFinite(f[t]!)) return true;
+      return false;
+    });
+    if (tiles.length > 0) out.push({ id: e.id, tiles, weight: e.weight });
+  }
+  return out;
+}
+
 /** Departing passengers come in from the street at reachable entrances, booked onto a train they can make. */
 export function stepSpawner(w: World, dtMin: number): void {
   const active = activePlatformIds(w);
@@ -99,14 +118,7 @@ export function stepSpawner(w: World, dtMin: number): void {
   if (n === 0) return;
 
   const fields = platformFields(w, active);
-  const entrances: { item: number[]; w: number }[] = [];
-  for (const e of w.map.entrances) {
-    const tiles = fieldTargets(w, `exit:${e.id}`).filter((t) => {
-      for (const f of fields.values()) if (Number.isFinite(f[t]!)) return true;
-      return false;
-    });
-    if (tiles.length > 0) entrances.push({ item: tiles, w: e.weight });
-  }
+  const entrances = reachableEntrances(w, fields).map((e) => ({ item: e.tiles, w: e.weight }));
   if (entrances.length === 0) return;
   // Once per call: the timetable scan sorts every service.
   const departures = w.timetable.departuresAfter(w.minute);
@@ -136,9 +148,9 @@ function arrivalLabel(w: World): DestLabel {
  */
 export function onTrainArrived(w: World, s: Service): void {
   const { rng, people } = w;
-  const platform = fieldTargets(w, `platform:${s.platformId}`);
+  const platform = walkableTargets(w, `platform:${s.platformId}`);
   if (platform.length === 0) return;
-  const exits = w.map.entrances.map((e) => ({ id: e.id, weight: e.weight, field: fieldFor(w, `exit:${e.id}`) }));
+  const exits = exitFields(w);
   let fields: Map<number, Float32Array> | null = null;
   let departures: Service[] | null = null;
 
@@ -153,11 +165,47 @@ export function onTrainArrived(w: World, s: Service): void {
         continue;
       }
     }
-    const reachable = exits.filter((e) => Number.isFinite(e.field[tile]!));
-    if (reachable.length === 0) continue;
-    const exit = rng.weighted(reachable.map((e) => ({ item: e, w: e.weight })));
-    const walk = Math.fround(walkMinutes(exit.field, tile));
-    const i = spawn(w, tile, Journey.Arriving, `exit:${exit.id}`, walk, w.minute + walk + sampleSlack(rng));
+    const exit = pickExit(w, exits, tile);
+    // Unreachable in play: a build that cuts a platform off from every exit is refused (Task 12).
+    if (!exit) continue;
+    const i = spawn(w, tile, Journey.Arriving, `exit:${exit.id}`, exit.walk, w.minute + exit.walk + sampleSlack(rng));
     people.destLabel[i] = arrivalLabel(w);
   }
+}
+
+type ExitField = { id: string; weight: number; field: Float32Array };
+
+function exitFields(w: World): ExitField[] {
+  return w.map.entrances.map((e) => ({ id: e.id, weight: e.weight, field: fieldFor(w, `exit:${e.id}`) }));
+}
+
+/** An exit reachable from `tile`, chosen by weight, with the Float32-rounded walk to it. */
+function pickExit(w: World, exits: readonly ExitField[], tile: number): { id: string; walk: number } | null {
+  const reachable = exits.filter((e) => Number.isFinite(e.field[tile]!));
+  if (reachable.length === 0) return null;
+  const exit = w.rng.weighted(reachable.map((e) => ({ item: e, w: e.weight })));
+  return { id: exit.id, walk: Math.fround(walkMinutes(exit.field, tile)) };
+}
+
+/**
+ * A passenger who missed their train and has no later service to take leaves instead: they walk
+ * to an exit as an arriving passenger would, with a fair deadline from here. Their journey was
+ * already counted, so this records nothing.
+ */
+export function sendToExit(w: World, i: number): void {
+  const p = w.people;
+  const tile = Math.floor(p.y[i]!) * w.grid.w + Math.floor(p.x[i]!);
+  const exit = pickExit(w, exitFields(w), tile);
+  if (!exit) {
+    // Unreachable in play (Task 12 refuses builds that strand people); nowhere to go, so they leave.
+    p.free(i);
+    return;
+  }
+  p.journey[i] = Journey.Arriving;
+  p.state[i] = PState.Walking;
+  p.serviceId[i] = -1;
+  p.goalKey[i] = `exit:${exit.id}`;
+  p.targetKey[i] = p.goalKey[i]!;
+  p.deadline[i] = w.minute + exit.walk + sampleSlack(w.rng);
+  p.destLabel[i] = arrivalLabel(w);
 }

@@ -1,12 +1,12 @@
 import { PState } from "./people";
 import type { Service } from "./timetable";
-import { onTrainArrived } from "./spawner";
+import { onTrainArrived, sendToExit } from "./spawner";
 import { recordOutcome, type World } from "./world";
 
 /**
  * Runs train events in (w.trainsUpTo, w.minute]: arrivals, boarding by anyone Waiting on their
  * platform while their train is in, and misses at departure (rebooked onto the platform's next
- * service). Working on the interval rather than the instant means a long step cannot skip one.
+ * service, or sent to an exit when there is none). Working on the interval rather than the instant means a long step cannot skip one.
  */
 export function stepTrains(w: World): void {
   const from = w.trainsUpTo;
@@ -39,7 +39,8 @@ export function stepTrains(w: World): void {
         next = timetable.upcoming(s.platformId, s.departAt)[0];
         departed.set(s.id, next);
       }
-      serviceId[i] = next ? next.id : -1;
+      if (next) serviceId[i] = next.id;
+      else sendToExit(w, i);
     }
   }
 }

@@ -98,6 +98,12 @@ export function fieldTargets(w: World, key: string): readonly number[] {
   return [];
 }
 
+/** The walkable tiles among a field key's targets: where a person can actually be put or sent. */
+export function walkableTargets(w: World, key: string): number[] {
+  const g = w.grid;
+  return fieldTargets(w, key).filter((t) => g.isWalkable(t % g.w, Math.floor(t / g.w)));
+}
+
 /**
  * The one place a journey's outcome is recorded; every outcome goes through here.
  * At most once per person: a counted person is ignored.
@@ -128,7 +134,7 @@ function handleArrivals(w: World, arrived: readonly number[]): void {
       recordOutcome(w, i, w.minute <= p.deadline[i]!, false);
       p.free(i);
     } else if (key.startsWith("platform:")) {
-      const tiles = fieldTargets(w, key);
+      const tiles = walkableTargets(w, key);
       p.state[i] = PState.Waiting;
       p.targetKey[i] = tiles.length > 0 ? `spot:${w.rng.pick(tiles)}` : "";
     }
