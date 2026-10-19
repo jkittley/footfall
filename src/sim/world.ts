@@ -11,6 +11,7 @@ import {
   type DayStats,
   type DaySummary,
 } from "./economy";
+import { FacilityKind, stepFacilities, type Facility } from "./facilities";
 import type { Grid, Rect } from "./grid";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
 import { stepMovement } from "./movement";
@@ -50,6 +51,8 @@ export interface World {
   ledger: Ledger;
   /** The game day now in progress; closed (once each) when the clock passes into the next. */
   day: number;
+  /** Keyed by id, in creation order. */
+  facilities: Map<number, Facility>;
   nextId: number;
 }
 
@@ -73,6 +76,7 @@ export function createWorld(seed: number): World {
     stats: { movedToday: 0, onTimeToday: 0, missedToday: 0 },
     ledger: new Ledger(STARTING_CASH),
     day: dayIndex(START_MINUTE),
+    facilities: new Map(),
     nextId: 1,
   };
   w.timetable.ensureHorizon(w.minute, activePlatformIds(w), w.rng);
@@ -91,7 +95,10 @@ function rectTiles(grid: Grid, r: Rect): number[] {
   return out;
 }
 
-/** Target tiles for a field key: `platform:<id>`, `exit:<A|B|C>`, `spot:<tileIdx>`; [] for anything else. */
+/**
+ * Target tiles for a field key: `platform:<id>`, `exit:<A|B|C>`, `spot:<tileIdx>`, `facility:<id>`
+ * (its service tiles) or `seat:<id>` (a seating block's own tiles); [] for anything else.
+ */
 export function fieldTargets(w: World, key: string): readonly number[] {
   const colon = key.indexOf(":");
   const kind = key.slice(0, colon);
@@ -108,7 +115,12 @@ export function fieldTargets(w: World, key: string): readonly number[] {
     const t = Number(arg);
     return arg !== "" && Number.isInteger(t) && t >= 0 && t < w.grid.w * w.grid.h ? [t] : [];
   }
-  // Task 10 adds facility:<id> and seat:<id>.
+  if (kind === "facility" || kind === "seat") {
+    const f = w.facilities.get(Number(arg));
+    if (!f) return [];
+    if (kind === "facility") return f.serviceTiles;
+    return f.kind === FacilityKind.Seating ? rectTiles(w.grid, f.rect) : [];
+  }
   return [];
 }
 
@@ -140,13 +152,14 @@ export function recordOutcome(w: World, personId: number, onTime: boolean, exclu
 /**
  * Reacts to walkers at their target, changing each one's state or target (or freeing them) so the
  * next step does not report them again: at an exit an arriving passenger leaves, on time if within
- * their deadline; on their platform a passenger waits, strolling to a random spot along it.
+ * their deadline; on their platform a passenger waits, strolling to a random spot along it; a
+ * queuer at their queue spot stands there.
  */
 function handleArrivals(w: World, arrived: readonly number[]): void {
   const p = w.people;
   for (const i of arrived) {
     const key = p.targetKey[i]!;
-    if (p.state[i] === PState.Waiting) {
+    if (p.state[i] === PState.Waiting || p.state[i] === PState.InQueue) {
       p.targetKey[i] = "";
     } else if (key.startsWith("exit:")) {
       recordOutcome(w, i, w.minute <= p.deadline[i]!, false);
@@ -169,19 +182,21 @@ export function step(w: World, dtReal: number): void {
   //   -> movement -> crowd -> growth (Task 13) -> economy day rollover (Task 9)
   stepTrains(w);
   stepSpawner(w, dtReal * GAME_MIN_PER_REAL_SEC);
+  stepFacilities(w, dtReal * GAME_MIN_PER_REAL_SEC);
   const arrived = stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, dtReal);
   handleArrivals(w, arrived);
   w.crowd.rebuild(w.people, w.grid);
   rollDays(w);
 }
 
-/** Closes each day the clock has passed (several, after a huge step): upkeep, summary, fresh stats. */
+/** Closes each day the clock has passed (several, after a huge step): upkeep, summary, fresh stats and takings. */
 function rollDays(w: World): void {
   const today = dayIndex(w.minute);
   while (w.day < today) {
     w.ledger.debit("maintenance", dailyUpkeep(w));
     w.events.push({ kind: "dayEnd", summary: w.ledger.closeDay(w.day, w.stats) });
     w.stats = { movedToday: 0, onTimeToday: 0, missedToday: 0 };
+    for (const f of w.facilities.values()) f.takingsToday = 0;
     w.day++;
   }
 }

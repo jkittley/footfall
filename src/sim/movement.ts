@@ -54,9 +54,9 @@ function canMove(grid: Grid, ax: number, ay: number, bx: number, by: number): bo
 }
 
 /**
- * Moves every Walking person, and every Waiting person with a targetKey, for `dtReal` real seconds
- * and returns the indices that are at their targetKey (their state is unchanged; the caller decides
- * what happens next).
+ * Moves every Walking person, and every Waiting or InQueue person with a targetKey, for `dtReal`
+ * real seconds and returns the indices that are at their targetKey (their state is unchanged; the
+ * caller decides what happens next).
  *
  * Field keys follow nextStep toward the next tile's centre; arrival is standing on a tile
  * whose field value is 0. `spot:<tileIdx>` keys steer straight at that tile's centre, sliding along
@@ -83,8 +83,9 @@ export function stepMovement(
 
   for (let i = 0, end = people.end; i < end; i++) {
     const st = state[i]!;
-    // A Waiting person still walks to their spot on the platform; with no target they stand.
-    if ((st !== PState.Walking && (st !== PState.Waiting || targetKey[i] === "")) || !people.isAlive(i)) continue;
+    // Waiting and queueing people still walk to their spot; with no target they stand.
+    const walksToSpot = st === PState.Waiting || st === PState.InQueue;
+    if ((st !== PState.Walking && (!walksToSpot || targetKey[i] === "")) || !people.isAlive(i)) continue;
     let px = x[i]!;
     let py = y[i]!;
     let tx = Math.floor(px);

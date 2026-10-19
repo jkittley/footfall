@@ -112,7 +112,8 @@ describe("movement", () => {
       const s = sim(g, { exit: [g.idx(29, 0), g.idx(29, 1), g.idx(29, 2)] });
       if (withCrowd) {
         for (let n = 0; n < 40; n++) {
-          addPerson(s, 12.5 + (n % 6), 0.5 + (Math.floor(n / 6) % 3), "exit", PState.InQueue);
+          // A standing queue: InQueue with no spot to walk to.
+          addPerson(s, 12.5 + (n % 6), 0.5 + (Math.floor(n / 6) % 3), "", PState.InQueue);
         }
       }
       const i = addPerson(s, 0.5, 1.5, "exit");

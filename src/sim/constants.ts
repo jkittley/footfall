@@ -18,3 +18,17 @@ export const MIN_SLACK_MINUTES = 3;
 export const SPAWN_PER_MIN_PER_PLATFORM = 0.3;
 /** Share of alighting passengers who connect to a train on another platform. */
 export const CONNECT_SHARE = 0.15;
+/** Game minutes between a retail unit being built (or emptied) and its tenant moving in. */
+export const TENANT_DELAY_MIN = 40;
+/** A to-let unit counts passers-by within this many tiles of it. */
+export const FOOTFALL_RADIUS = 6;
+/** A seated person stands this many minutes earlier than their walk to the goal strictly needs. */
+export const SEAT_LEAVE_MARGIN = 5;
+/** Nobody sits longer than this (game minutes). */
+export const SEAT_MAX_MIN = 30;
+/** Game minutes an evicted unit stays empty before a new tenant moves in. */
+export const EMPTY_AFTER_EVICT_MIN = 120;
+/** Leisure customers spend this much more than commuters. */
+export const LEISURE_SPEND_MUL = 1.3;
+/** Longest line of floor tiles a queue may stand on. */
+export const MAX_QUEUE_TILES = 12;
