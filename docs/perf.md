@@ -18,12 +18,16 @@ Gate: PASS if fps >= 55 and sim + draw <= 12 ms per frame.
 - Browser sim time per step is about 2-3x the back-to-back headless figure (0.9 ms/step): with idle gaps between frames the same code measures ~3 ms/step in plain node, so the gap is cold caches/clock behaviour between frames, not browser overhead or dev mode.
 - Auto run: open `/bench.html?auto=1` (add `&zoom=1` or `&zoom=2`); after 5 s warm-up it records 15 s and writes `window.__benchResult` (fpsMean, fpsP5, simMs, drawMs, zoom). `node scripts/benchChrome.mjs <url>` does that in headless Chrome.
 
-## Browser rows (controller to fill in)
+## Browser gate: PASSED
 
-| Date | Zoom | fps mean | fps p5 | sim ms | draw ms | Result |
-| --- | --- | --- | --- | --- | --- | --- |
-| TBD | default | TBD | TBD | TBD | TBD | TBD |
-| TBD | 1 | TBD | TBD | TBD | TBD | TBD |
-| TBD | 2 | TBD | TBD | TBD | TBD | TBD |
+Machine: user's Mac, real Chrome (visible tab), production build via `vite preview`, viewport 1564x1300 CSS px, devicePixelRatio 2, `?auto=1` (5 s warm-up, 15 s recorded), 5,000 people, x3 speed. Measured 2026-10-19 at commit a03454f.
 
-Informal headless-Chrome check by the implementer (production build, dpr 2, 1564x1300, likely software or virtual GPU, not authoritative): default zoom 60.0 fps (p5 59.9), sim 2.7 ms; zoom 1: 60.0 / 59.9, sim 2.8 ms; zoom 2: 60.0 / 59.5, sim 2.6 ms. Dev server: sim 3.1 ms.
+| zoom | fps mean | fps p5 | sim ms | draw ms |
+| --- | --- | --- | --- | --- |
+| 0.49 (fit) | 59.7 | 57.1 | 5.12 | 0.84 |
+| 1 | 60.0 | 57.1 | 5.16 | 0.99 |
+| 2 | 59.7 | 57.1 | 5.23 | 0.98 |
+
+Gate: fps >= 55 and sim + draw <= 12 ms: PASS at every zoom.
+
+The headless-Chrome numbers (60 fps, sim 2.6-2.8 ms) were an informal implementer check only; the GPU path there is unconfirmed, so the real-Chrome rows above are the authoritative ones.

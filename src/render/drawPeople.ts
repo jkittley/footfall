@@ -1,49 +1,12 @@
 import type { Camera } from "./camera";
-import { Journey, Mode, type PeopleStore } from "../sim/people";
+import { Journey, type PeopleStore } from "../sim/people";
+import { drawPeople2d } from "./drawPeople2d";
+import { fan, inset, leftHalf, POLYS, RING_PX } from "./shapes";
+import { tryCreate } from "./rendererChoice";
 
 const FLOOR = "#F8F6F2";
 const COLOURS = ["#2F6FDB", "#E8772E", "#7B5CD6", "#E5B72A"]; // indexed by Mode: train, subway, flight, street
-const STROKE_PX = 2;
 const GROUPS = 12; // mode * 3 + journey
-const CIRCLE_R = 5;
-const CIRCLE_SEGMENTS = 16;
-/** Nominal radius per mode, used to turn a 1px stroke offset into a scale. */
-const NOMINAL_R = [5, 6, 6, 5.5];
-
-type Pt = readonly [number, number];
-
-const POLYS: Record<Mode, readonly Pt[]> = {
-  [Mode.Train]: Array.from({ length: CIRCLE_SEGMENTS }, (_, k): Pt => [
-    CIRCLE_R * Math.cos((k * 2 * Math.PI) / CIRCLE_SEGMENTS),
-    CIRCLE_R * Math.sin((k * 2 * Math.PI) / CIRCLE_SEGMENTS),
-  ]),
-  [Mode.Subway]: [[0, -5.5], [6, 5.5], [-6, 5.5]],
-  [Mode.Flight]: [0, 1, 2, 3, 4, 5].map((k): Pt => [6 * Math.cos((k * Math.PI) / 3), 6 * Math.sin((k * Math.PI) / 3)]),
-  [Mode.Street]: [[0, -5.5], [5.5, 0], [0, 5.5], [-5.5, 0]],
-};
-
-/** Sutherland-Hodgman clip of a convex polygon to x <= 0. */
-function leftHalf(poly: readonly Pt[]): Pt[] {
-  const out: Pt[] = [];
-  for (let k = 0; k < poly.length; k++) {
-    const a = poly[k]!;
-    const b = poly[(k + 1) % poly.length]!;
-    const aIn = a[0] <= 0;
-    const bIn = b[0] <= 0;
-    if (aIn) out.push(a);
-    if (aIn !== bIn) out.push([0, a[1] + ((b[1] - a[1]) * (0 - a[0])) / (b[0] - a[0])]);
-  }
-  return out;
-}
-
-/** Triangle fan around the origin (every shape is convex and contains it). */
-function fan(poly: readonly Pt[], out: number[]): void {
-  for (let k = 0; k < poly.length; k++) {
-    const a = poly[k]!;
-    const b = poly[(k + 1) % poly.length]!;
-    out.push(0, 0, a[0], a[1], b[0], b[1]);
-  }
-}
 
 function hex(h: string): [number, number, number] {
   return [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
@@ -82,25 +45,42 @@ function compile(gl: WebGL2RenderingContext, type: number, src: string): WebGLSh
 class PeopleRenderer {
   readonly canvas = document.createElement("canvas");
   private readonly gl: WebGL2RenderingContext;
-  private readonly prog: WebGLProgram;
-  private readonly loc: Record<"origin" | "tilePx" | "k" | "view" | "colour", WebGLUniformLocation | null>;
-  private readonly geomBuf: WebGLBuffer;
-  private readonly instBuf: WebGLBuffer;
-  private readonly vao: WebGLVertexArrayObject;
-  private readonly aPos: number;
-  /** Per mode: [fullStart, fullCount, halfStart, halfCount] in vertices. */
-  private readonly ranges: number[][] = [];
+  private prog!: WebGLProgram;
+  private loc!: Record<"origin" | "tilePx" | "k" | "view" | "colour", WebGLUniformLocation | null>;
+  private instBuf!: WebGLBuffer;
+  private vao!: WebGLVertexArrayObject;
+  private aPos = 0;
+  /** True between webglcontextlost and webglcontextrestored. */
+  lost = false;
+  /** Per mode: [fullStart, fullCount, innerStart, innerCount, halfStart, halfCount] in vertices. */
+  private ranges: number[][] = [];
   private inst = new Float32Array(0);
   private readonly colours = COLOURS.map(hex);
   private readonly floor = hex(FLOOR);
   private readonly counts = new Int32Array(GROUPS);
   private readonly starts = new Int32Array(GROUPS);
   private readonly cursor = new Int32Array(GROUPS);
+  /** Instances in the packed buffer: the sum of the group counts. */
+  private packed = 0;
 
   constructor() {
     const gl = this.canvas.getContext("webgl2", { antialias: true, alpha: true, premultipliedAlpha: true });
     if (!gl) throw new Error("WebGL2 is not available");
     this.gl = gl;
+    this.canvas.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      this.lost = true;
+    });
+    this.canvas.addEventListener("webglcontextrestored", () => {
+      this.init();
+      this.lost = false;
+    });
+    this.init();
+  }
+
+  /** Builds every GL resource; runs again after a context restore. */
+  private init(): void {
+    const gl = this.gl;
     const prog = gl.createProgram();
     if (!prog) throw new Error("createProgram failed");
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
@@ -117,19 +97,22 @@ class PeopleRenderer {
     };
 
     const verts: number[] = [];
+    this.ranges = [];
     for (let m = 0; m < 4; m++) {
-      const poly = POLYS[m as Mode];
+      const poly = POLYS[m as keyof typeof POLYS];
       const fullStart = verts.length / 2;
       fan(poly, verts);
+      const innerStart = verts.length / 2;
+      fan(inset(poly, RING_PX), verts);
       const halfStart = verts.length / 2;
       fan(leftHalf(poly), verts);
-      this.ranges.push([fullStart, halfStart - fullStart, halfStart, verts.length / 2 - halfStart]);
+      const end = verts.length / 2;
+      this.ranges.push([fullStart, innerStart - fullStart, innerStart, halfStart - innerStart, halfStart, end - halfStart]);
     }
     const geomBuf = gl.createBuffer();
     const instBuf = gl.createBuffer();
     const vao = gl.createVertexArray();
     if (!geomBuf || !instBuf || !vao) throw new Error("buffer allocation failed");
-    this.geomBuf = geomBuf;
     this.instBuf = instBuf;
     this.vao = vao;
     gl.bindVertexArray(vao);
@@ -147,7 +130,9 @@ class PeopleRenderer {
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   }
 
-  draw(ctx: CanvasRenderingContext2D, cam: Camera, people: PeopleStore): void {
+  /** Returns false (drawing nothing) while the GL context is lost. */
+  draw(ctx: CanvasRenderingContext2D, cam: Camera, people: PeopleStore): boolean {
+    if (this.lost) return false;
     const gl = this.gl;
     const dpr = ctx.getTransform().a || 1;
     const pw = ctx.canvas.width;
@@ -164,7 +149,7 @@ class PeopleRenderer {
     gl.useProgram(this.prog);
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, this.inst.subarray(0, people.count * 2), gl.STREAM_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, this.inst.subarray(0, this.packed * 2), gl.STREAM_DRAW);
 
     const [ox, oy] = cam.worldToScreen(0, 0);
     gl.uniform2f(this.loc.origin, ox, oy);
@@ -172,12 +157,9 @@ class PeopleRenderer {
     gl.uniform2f(this.loc.view, pw / dpr, ph / dpr);
 
     const k = cam.zoom;
-    const half = STROKE_PX / 2;
     for (let m = 0; m < 4; m++) {
-      const [fs, fc, hs, hc] = this.ranges[m]!;
+      const [fs, fc, is, ic, hs, hc] = this.ranges[m]!;
       const colour = this.colours[m]!;
-      const outer = k + half / NOMINAL_R[m]!;
-      const inner = Math.max(0, k - half / NOMINAL_R[m]!);
       for (let j = 0; j < 3; j++) {
         const g = m * 3 + j;
         const n = this.counts[g]!;
@@ -186,9 +168,9 @@ class PeopleRenderer {
         if (j === Journey.Departing) {
           this.pass(colour, k, fs!, fc!, n);
         } else {
-          this.pass(colour, outer, fs!, fc!, n);
-          this.pass(this.floor, inner, fs!, fc!, n);
-          if (j === Journey.Connecting) this.pass(colour, inner, hs!, hc!, n);
+          this.pass(colour, k, fs!, fc!, n);
+          this.pass(this.floor, k, is!, ic!, n);
+          if (j === Journey.Connecting) this.pass(colour, k, hs!, hc!, n);
         }
       }
     }
@@ -197,6 +179,7 @@ class PeopleRenderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.canvas, 0, 0);
     ctx.restore();
+    return true;
   }
 
   private pass(colour: readonly number[], k: number, first: number, count: number, instances: number): void {
@@ -219,6 +202,7 @@ class PeopleRenderer {
       this.cursor[g] = acc;
       acc += this.counts[g]!;
     }
+    this.packed = acc;
     const inst = this.inst;
     for (let i = 0; i < end; i++) {
       if (!people.isAlive(i)) continue;
@@ -231,9 +215,14 @@ class PeopleRenderer {
 }
 
 let renderer: PeopleRenderer | null = null;
+let triedGl = false;
 
-/** Draws every person as its mode's shape and colour; fill is solid (departing), outline (arriving) or half (connecting). */
+/** Draws every person as its mode's shape and colour; fill is solid (departing), outline (arriving) or half (connecting). Falls back to Canvas 2D when WebGL2 is unavailable or its context is lost. */
 export function drawPeople(ctx: CanvasRenderingContext2D, cam: Camera, people: PeopleStore): void {
-  renderer ??= new PeopleRenderer();
-  renderer.draw(ctx, cam, people);
+  if (!triedGl) {
+    triedGl = true;
+    renderer = tryCreate(() => new PeopleRenderer(), (msg, e) => console.warn(msg, e));
+  }
+  if (renderer?.draw(ctx, cam, people)) return;
+  drawPeople2d(ctx, cam, people);
 }
