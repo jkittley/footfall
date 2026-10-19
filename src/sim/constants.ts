@@ -30,5 +30,9 @@ export const SEAT_MAX_MIN = 30;
 export const EMPTY_AFTER_EVICT_MIN = 120;
 /** Leisure customers spend this much more than commuters. */
 export const LEISURE_SPEND_MUL = 1.3;
+/** A person gives up on a queue after waiting this many game minutes in it. */
+export const QUEUE_GIVE_UP_MIN = 20;
+/** A queuer leaves once they have less than this many spare minutes over their walk to the goal. */
+export const QUEUE_LEAVE_MARGIN = 5;
 /** Longest line of floor tiles a queue may stand on. */
 export const MAX_QUEUE_TILES = 12;

@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { EMPTY_AFTER_EVICT_MIN, LEISURE_SPEND_MUL, SIM_DT, TENANT_DELAY_MIN } from "../../src/sim/constants";
+import {
+  EMPTY_AFTER_EVICT_MIN,
+  LEISURE_SPEND_MUL,
+  QUEUE_GIVE_UP_MIN,
+  SIM_DT,
+  TENANT_DELAY_MIN,
+} from "../../src/sim/constants";
 import { PRICES, RENT_SHARE } from "../../src/sim/economy";
 import {
   FacilityKind,
@@ -124,12 +130,14 @@ test("queue forms on the floor and serves in order", () => {
   }
   ids.forEach((id, k) => expect(tileOf(w, id)).toBe(f.queueTiles[k]));
 
+  // Six four-minute services outlast QUEUE_GIVE_UP_MIN, so the back of the queue may give up.
   const served: number[] = [];
-  for (let n = 0; n < 40000 && served.length < ids.length; n++) {
+  for (let n = 0; n < 40000 && f.queue.length + f.serving.length > 0; n++) {
     step(w, SIM_DT);
     for (const s of f.serving) if (!served.includes(s.pid)) served.push(s.pid);
   }
-  expect(served).toEqual(ids);
+  expect(served.length).toBeGreaterThanOrEqual(4);
+  expect(served).toEqual(ids.slice(0, served.length));
 });
 
 test("people refuse a full queue", () => {
@@ -215,7 +223,7 @@ test("queue tiles run as a line of plain floor away from the unit", () => {
       expect(Math.abs(x - px) + Math.abs(y - py)).toBe(1);
     }
   }
-  expect(fieldTargets(w, `facility:${f.id}`)).toEqual(f.serviceTiles);
+  expect(fieldTargets(w, `facility:${f.id}`)).toEqual(f.queueTiles);
 });
 
 test("a seat holds area x 2 people, then they stand rested", () => {
@@ -231,8 +239,10 @@ test("a seat holds area x 2 people, then they stand rested", () => {
   expect(arriveAtFacility(w, seats, b)).toBe(true);
   expect(arriveAtFacility(w, seats, c)).toBe(false);
   expect(w.people.state[a]).toBe(PState.Seated);
+  w.minute += 29;
   stepFacilities(w, 29);
   expect(w.people.state[a]).toBe(PState.Seated);
+  w.minute += 1.5;
   stepFacilities(w, 1.5);
   expect(w.people.state[a]).toBe(PState.Walking);
   expect(w.people.needs[a * NEED_COUNT + Need.Tired]).toBe(0);
@@ -268,4 +278,68 @@ test("takings reset at the day rollover", () => {
   w.trainsUpTo = w.minute;
   step(w, SIM_DT);
   expect(f.takingsToday).toBe(0);
+});
+
+test("a person arriving from behind the unit walks round to the queue and is served", () => {
+  const w = islandWorld();
+  const f = foodUnit(w);
+  const [, qy] = w.grid.xy(f.queueTiles[0]!);
+  expect(qy).toBeLessThan(UNIT.y); // the line runs north, so south is behind the unit
+  const pid = person(w, 68, 46);
+  let joined = false;
+  let served = false;
+  const until = w.minute + 15;
+  while (w.minute < until && !served) {
+    step(w, SIM_DT);
+    if (!joined && f.queueTiles.includes(tileOf(w, pid))) joined = arriveAtFacility(w, f, pid);
+    if (w.people.state[pid] === PState.InFacility) served = true;
+  }
+  expect(joined).toBe(true);
+  expect(served).toBe(true);
+});
+
+test("a queuer gives up after QUEUE_GIVE_UP_MIN, need unmet", () => {
+  const w = islandWorld();
+  const f = foodUnit(w);
+  const a = person(w, 62, 32);
+  const b = person(w, 63, 32);
+  w.people.needs[b * NEED_COUNT + Need.Hunger] = 0.7;
+  w.people.errand[b] = Need.Hunger;
+  w.people.errandFacility[b] = f.id;
+  tryJoin(w, f, a);
+  tryJoin(w, f, b);
+  // Nobody walks here, so the front never reaches the counter and the queue never moves.
+  for (let m = 0; m < QUEUE_GIVE_UP_MIN; m++) {
+    w.minute += 1;
+    stepFacilities(w, 1);
+  }
+  expect(w.people.state[b]).toBe(PState.InQueue);
+  w.minute += 1;
+  stepFacilities(w, 1);
+  expect(f.queue).toHaveLength(0);
+  expect(w.people.state[b]).toBe(PState.Walking);
+  expect(w.people.targetKey[b]).toBe("exit:A");
+  expect(w.people.errand[b]).toBe(-1);
+  expect(w.people.errandFacility[b]).toBe(-1);
+  expect(w.people.needs[b * NEED_COUNT + Need.Hunger]).toBeCloseTo(0.7);
+});
+
+test("a queuer leaves to make their deadline", () => {
+  const w = createWorld(1);
+  const f = createFacility(w, FacilityKind.Toilet, { x: 12, y: 66, w: 1, h: 2 });
+  const p = w.people;
+  const a = p.alloc();
+  p.x[a] = 10.5;
+  p.y[a] = 70.5;
+  p.state[a] = PState.Walking;
+  p.goalKey[a] = "exit:A";
+  // About 8.6 minutes' walk to Harbour Road: they need to go once fewer than 13.6 minutes remain.
+  p.deadline[a] = w.minute + 15;
+  expect(tryJoin(w, f, a)).toBe(true);
+  stepFacilities(w, SIM_DT);
+  expect(p.state[a]).toBe(PState.InQueue);
+  w.minute += 2;
+  stepFacilities(w, 2);
+  expect(p.state[a]).toBe(PState.Walking);
+  expect(p.targetKey[a]).toBe("exit:A");
 });

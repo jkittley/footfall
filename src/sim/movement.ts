@@ -125,9 +125,9 @@ export function stepMovement(
         if (canMove(grid, px, py, nx, ny)) {
           px = nx;
           py = ny;
-        } else if (canMove(grid, px, py, nx, py)) {
+        } else if (nx !== px && canMove(grid, px, py, nx, py)) {
           px = nx;
-        } else if (canMove(grid, px, py, px, ny)) {
+        } else if (ny !== py && canMove(grid, px, py, px, ny)) {
           py = ny;
         }
         time -= move / speed;

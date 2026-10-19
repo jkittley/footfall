@@ -97,7 +97,8 @@ function rectTiles(grid: Grid, r: Rect): number[] {
 
 /**
  * Target tiles for a field key: `platform:<id>`, `exit:<A|B|C>`, `spot:<tileIdx>`, `facility:<id>`
- * (its service tiles) or `seat:<id>` (a seating block's own tiles); [] for anything else.
+ * (its queue tiles, else its service tiles) or `seat:<id>` (a seating block's own tiles); [] for
+ * anything else.
  */
 export function fieldTargets(w: World, key: string): readonly number[] {
   const colon = key.indexOf(":");
@@ -118,7 +119,8 @@ export function fieldTargets(w: World, key: string): readonly number[] {
   if (kind === "facility" || kind === "seat") {
     const f = w.facilities.get(Number(arg));
     if (!f) return [];
-    if (kind === "facility") return f.serviceTiles;
+    // The queue line, so arrivals land on the queue side rather than behind the unit.
+    if (kind === "facility") return f.queueTiles.length > 0 ? f.queueTiles : f.serviceTiles;
     return f.kind === FacilityKind.Seating ? rectTiles(w.grid, f.rect) : [];
   }
   return [];

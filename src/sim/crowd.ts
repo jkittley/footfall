@@ -22,6 +22,7 @@ export class CrowdGrid {
     for (let i = 0, end = people.end; i < end; i++) {
       if (!people.isAlive(i)) continue;
       const s = state[i]!;
+      // InFacility is left out deliberately: they are hidden inside the unit, not on the floor.
       if (s !== PState.Walking && s !== PState.Waiting && s !== PState.InQueue && s !== PState.Seated) continue;
       const tx = Math.floor(x[i]!);
       const ty = Math.floor(y[i]!);

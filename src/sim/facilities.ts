@@ -3,6 +3,8 @@ import {
   FOOTFALL_RADIUS,
   LEISURE_SPEND_MUL,
   MAX_QUEUE_TILES,
+  QUEUE_GIVE_UP_MIN,
+  QUEUE_LEAVE_MARGIN,
   SEAT_LEAVE_MARGIN,
   SEAT_MAX_MIN,
   TENANT_DELAY_MIN,
@@ -69,7 +71,7 @@ export interface Facility {
   footfallSeen: Set<number>;
   /** Person ids, front first. */
   queue: number[];
-  /** Being served (retail, toilet) or sitting (seating; `until` is the latest they stand). */
+  /** Being served (retail, toilet; `until` service ends) or sitting (seating; `until` the latest they stand). */
   serving: { pid: number; until: number }[];
   capacity: number;
   takingsToday: number;
@@ -232,6 +234,7 @@ export function tryJoin(w: World, f: Facility, pid: number): boolean {
   if (f.queue.length >= maxQueue(f) || f.queue.length >= f.queueTiles.length) return false;
   w.people.state[pid] = PState.InQueue;
   w.people.targetKey[pid] = `spot:${f.queueTiles[f.queue.length]}`;
+  w.people.timer[pid] = 0;
   f.queue.push(pid);
   return true;
 }
@@ -243,7 +246,6 @@ function sit(w: World, f: Facility, pid: number): boolean {
   if (f.serving.length >= f.capacity) return false;
   p.state[pid] = PState.Seated;
   p.targetKey[pid] = "";
-  p.timer[pid] = 0;
   f.serving.push({ pid, until: w.minute + SEAT_MAX_MIN });
   return true;
 }
@@ -255,6 +257,20 @@ export function arriveAtFacility(w: World, f: Facility, pid: number): boolean {
 
 function tileOf(w: World, pid: number): number {
   return w.grid.idx(Math.floor(w.people.x[pid]!), Math.floor(w.people.y[pid]!));
+}
+
+/**
+ * Minutes left over after walking from here to their goal. Someone who cannot reach their goal
+ * from here loses nothing by staying, so an unreachable goal counts as no walk.
+ */
+function spareMinutes(w: World, pid: number): number {
+  const p = w.people;
+  const goal = p.goalKey[pid]!;
+  const walk = walkMinutes(
+    w.fields.get(goal, () => fieldTargets(w, goal)),
+    tileOf(w, pid),
+  );
+  return p.deadline[pid]! - w.minute - (Number.isFinite(walk) ? walk : 0);
 }
 
 function countFootfall(w: World, f: Facility): void {
@@ -299,10 +315,18 @@ function finishService(w: World, f: Facility, pid: number): void {
   resume(p, pid);
 }
 
-function stepQueue(w: World, f: Facility): void {
+function stepQueue(w: World, f: Facility, dtMin: number): void {
   const p = w.people;
   prune(p, f, PState.InFacility);
+  // Nobody waits forever, or past the point of making their train: they walk on, need unmet.
   let n = 0;
+  for (const pid of f.queue) {
+    p.timer[pid] = p.timer[pid]! + dtMin;
+    if (p.timer[pid]! > QUEUE_GIVE_UP_MIN || spareMinutes(w, pid) < QUEUE_LEAVE_MARGIN) resume(p, pid);
+    else f.queue[n++] = pid;
+  }
+  f.queue.length = n;
+  n = 0;
   for (const s of f.serving) {
     if (w.minute >= s.until) finishService(w, f, s.pid);
     else f.serving[n++] = s;
@@ -327,21 +351,13 @@ function stepQueue(w: World, f: Facility): void {
   }
 }
 
-function stepSeats(w: World, f: Facility, dtMin: number): void {
+function stepSeats(w: World, f: Facility): void {
   const p = w.people;
   prune(p, f, PState.Seated);
   let n = 0;
   for (const s of f.serving) {
     const pid = s.pid;
-    p.timer[pid] = p.timer[pid]! + dtMin;
-    const goal = p.goalKey[pid]!;
-    const walk = walkMinutes(
-      w.fields.get(goal, () => fieldTargets(w, goal)),
-      tileOf(w, pid),
-    );
-    // Someone who cannot reach their goal from here loses nothing by sitting on.
-    const leaveBy = p.deadline[pid]! - (Number.isFinite(walk) ? walk : 0) - SEAT_LEAVE_MARGIN;
-    if (p.timer[pid]! >= SEAT_MAX_MIN || w.minute >= leaveBy) {
+    if (w.minute >= s.until || spareMinutes(w, s.pid) <= SEAT_LEAVE_MARGIN) {
       p.needs[pid * NEED_COUNT + Need.Tired] = 0;
       resume(p, pid);
     } else {
@@ -363,8 +379,8 @@ export function stepFacilities(w: World, dtMin: number): void {
       if (f.tenantAt >= 0 && w.minute >= f.tenantAt) moveIn(w, f);
       else if (minuteTick) countFootfall(w, f);
     }
-    if (f.kind === FacilityKind.Seating) stepSeats(w, f, dtMin);
-    else stepQueue(w, f);
+    if (f.kind === FacilityKind.Seating) stepSeats(w, f);
+    else stepQueue(w, f, dtMin);
   }
 }
 
