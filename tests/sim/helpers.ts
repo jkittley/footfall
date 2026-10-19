@@ -135,3 +135,23 @@ export function narrowGaps(map: StationMap, min: number, max: number): XY[][] {
 export function countNarrowGaps(map: StationMap, min: number, max: number): number {
   return narrowGaps(map, min, max).length;
 }
+
+/** w x h grid of walkable floor. */
+export function openFloor(w: number, h: number): Grid {
+  const g = new Grid(w, h);
+  fillGroundWithFloor(g);
+  return g;
+}
+
+/** A 1-tile-high floor strip. */
+export function strip(w: number): Grid {
+  return openFloor(w, 1);
+}
+
+/** 7x3 floor with a wall at x=3 on rows 0 and 1, leaving a gap on row 2. */
+export function corridorWithWall(): Grid {
+  const g = openFloor(7, 3);
+  g.setTile(3, 0, Tile.Wall);
+  g.setTile(3, 1, Tile.Wall);
+  return g;
+}

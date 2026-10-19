@@ -4,3 +4,6 @@ export const SIM_DT = 1 / 30;
 export const MAX_STEPS_PER_FRAME = 12;
 export const MAX_PEOPLE = 8000;
 export const TILE_PX = 16;
+export const SEATING_COST = 3;
+export const TRAVELATOR_COST = 0.4;
+export const DENSITY_WEIGHT = 1.5;
