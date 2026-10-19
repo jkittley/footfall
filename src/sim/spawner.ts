@@ -213,6 +213,7 @@ export function rebook(w: World, i: number, ctx: RebookContext = rebookContext(w
   const oldGoal = p.goalKey[i]!;
   const goal = `platform:${booking.service.platformId}`;
   p.serviceId[i] = booking.service.id;
+  // A new booking gets a new fair deadline from here; only rebuilds never move a deadline.
   p.deadline[i] = booking.service.departAt;
   p.goalKey[i] = goal;
   // Someone mid-errand keeps at it; resuming takes them to the new goal.

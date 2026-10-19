@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 import { ServiceMeter, addPlatform, deactivatePlatform, stepGrowth } from "../../src/sim/growth";
-import { Tile } from "../../src/sim/grid";
+import { FacilityKind, createFacility } from "../../src/sim/facilities";
+import { Tile, Zone } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
 import { activePlatformIds, createWorld, recordOutcome, type World } from "../../src/sim/world";
 import { platformTiles } from "./helpers";
@@ -125,3 +126,90 @@ test("outcomes feed the meter unless excluded", () => {
   expect(w.meter.rate(w.minute)).toBeCloseTo(22 / 30);
 });
 
+
+/** A meter that reads whatever rate it is set to. */
+class FixedMeter extends ServiceMeter {
+  value: number | null = null;
+  override rate(): number | null {
+    return this.value;
+  }
+}
+
+function fixedMeter(w: World): FixedMeter {
+  const m = new FixedMeter();
+  w.meter = m;
+  return m;
+}
+
+/** Advances the clock `minutes` whole minutes, one growth step each. */
+function tick(w: World, minutes: number): void {
+  for (let k = 0; k < minutes; k++) {
+    w.minute = Math.floor(w.minute) + 1;
+    stepGrowth(w);
+  }
+}
+
+test("growth acts at exactly SUSTAIN_MIN of good service, not a minute before", () => {
+  const w = createWorld(1);
+  fixedMeter(w).value = 0.95;
+  tick(w, 180);
+  expect(w.platformsAdded).toBe(2);
+  tick(w, 1);
+  expect(w.platformsAdded).toBe(3);
+});
+
+test("a rate in the dead band resets the sustain timer", () => {
+  const w = createWorld(1);
+  const m = fixedMeter(w);
+  m.value = 0.95;
+  tick(w, 100);
+  m.value = 0.8;
+  tick(w, 1);
+  expect(w.growth.goodSince).toBeNull();
+  expect(w.growth.badSince).toBeNull();
+  m.value = 0.95;
+  tick(w, 180);
+  expect(w.platformsAdded).toBe(2);
+  tick(w, 1);
+  expect(w.platformsAdded).toBe(3);
+});
+
+test("cooldown blocks a second action for COOLDOWN_MIN", () => {
+  const w = createWorld(1);
+  fixedMeter(w).value = 1;
+  tick(w, 181);
+  expect(w.platformsAdded).toBe(3);
+  // 240 minutes of cooldown, then a fresh 180 of sustain.
+  tick(w, 419);
+  expect(w.platformsAdded).toBe(3);
+  tick(w, 1);
+  expect(w.platformsAdded).toBe(4);
+});
+
+test("growth state round-trips through JSON", () => {
+  const w = createWorld(1);
+  feed(w, 10, 5, 4);
+  expect(JSON.parse(JSON.stringify(w.growth))).toEqual(w.growth);
+  const meter = Object.assign(new ServiceMeter(), JSON.parse(JSON.stringify(w.meter)));
+  expect(meter.rate(w.minute)).toBe(w.meter.rate(w.minute));
+});
+
+test("a platform opening over an old build clears the zone and frees its people", () => {
+  const w = createWorld(1);
+  const foot = w.map.slots[2]!.foot;
+  for (let y = foot.y; y < foot.y + foot.h; y++) for (let x = foot.x; x < foot.x + foot.w; x++) w.grid.setTile(x, y, Tile.Floor);
+  const shop = createFacility(w, FacilityKind.Seating, { x: foot.x, y: foot.y, w: 2, h: 2 });
+  const i = w.people.alloc();
+  w.people.x[i] = foot.x + 0.5;
+  w.people.y[i] = foot.y + 0.5;
+  w.people.state[i] = PState.Seated;
+  w.people.goalKey[i] = "platform:1";
+  shop.serving.push({ pid: i, until: w.minute + 10 });
+
+  addPlatform(w, 3);
+
+  expect(w.facilities.has(shop.id)).toBe(false);
+  expect(w.grid.zone(foot.x, foot.y)).toBe(Zone.None);
+  expect(w.people.state[i]).toBe(PState.Walking);
+  expect(w.people.targetKey[i]).toBe("platform:1");
+});

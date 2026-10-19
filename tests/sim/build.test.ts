@@ -46,7 +46,7 @@ test("floor preview counts only ground tiles and prices them", () => {
 
 test("floor must join existing floor", () => {
   const w = createWorld(1);
-  const p = previewPlacement(w, "floor", { x: 40, y: 40, w: 2, h: 2 });
+  const p = previewPlacement(w, "floor", { x: 20, y: 58, w: 2, h: 2 });
   expect(p.valid).toBe(false);
   expect(p.reason).toBe("Must join existing floor");
 });
@@ -86,7 +86,7 @@ test("retail too small and off-floor are refused with reasons", () => {
   const small = previewPlacement(w, "retail", { x: 12, y: 57, w: 1, h: 2 });
   expect(small.valid).toBe(false);
   expect(small.reason).toBe("Too small");
-  const ground = previewPlacement(w, "retail", { x: 40, y: 40, w: 2, h: 2 });
+  const ground = previewPlacement(w, "retail", { x: 20, y: 58, w: 2, h: 2 });
   expect(ground.valid).toBe(false);
   expect(ground.reason).toBe("Must be on plain floor");
 });
@@ -103,13 +103,13 @@ test("a cost exactly equal to the balance is allowed", () => {
 test("a unit with no walkable tile beside it is refused", () => {
   const w = createWorld(1);
   // An island of floor walled in by ground on every side.
-  for (const [x, y] of tilesOf({ x: 40, y: 40, w: 2, h: 2 })) w.grid.setTile(x, y, Tile.Floor);
-  expect(previewPlacement(w, "retail", { x: 40, y: 40, w: 2, h: 2 }).reason).toBe("Needs a floor tile beside it");
+  for (const [x, y] of tilesOf({ x: 20, y: 58, w: 2, h: 2 })) w.grid.setTile(x, y, Tile.Floor);
+  expect(previewPlacement(w, "retail", { x: 20, y: 58, w: 2, h: 2 }).reason).toBe("Needs a floor tile beside it");
 });
 
 test("nothing to remove and a blocked entrance are refused with reasons", () => {
   const w = createWorld(1);
-  expect(previewPlacement(w, "remove", { x: 40, y: 40, w: 2, h: 2 }).reason).toBe("Nothing to remove here");
+  expect(previewPlacement(w, "remove", { x: 20, y: 58, w: 2, h: 2 }).reason).toBe("Nothing to remove here");
   // The starting floor between Market Place and the concourse is Entrance B's only way in.
   const p = previewPlacement(w, "remove", { x: 1, y: 55, w: 5, h: 3 });
   expect(p.valid).toBe(false);
@@ -331,4 +331,25 @@ test("a build that shortens a queue line sends the queuers past its end on their
   const left = queuers.filter((pid) => w.people.state[pid] === PState.Walking);
   expect(left.length).toBeGreaterThan(0);
   for (const pid of left) expect(w.people.targetKey[pid]).toBe("platform:1");
+});
+
+test("an unopened slot's track and platform are reserved; its foot takes floor only", () => {
+  const w = createWorld(1);
+  const slot3 = w.map.slots[2]!;
+  const onPlatform = previewPlacement(w, "retail", { x: slot3.platform.x, y: slot3.platform.y + 10, w: 2, h: 2 });
+  expect(onPlatform.valid).toBe(false);
+  expect(onPlatform.reason).toBe("Reserved for a future platform");
+  expect(previewPlacement(w, "floor", { x: slot3.track.x, y: slot3.track.y + 29, w: 1, h: 1 }).reason).toBe(
+    "Reserved for a future platform",
+  );
+
+  const foot = previewPlacement(w, "floor", slot3.foot);
+  expect(foot.valid).toBe(true);
+  expect(applyPlacement(w, foot)).toBe(true);
+  const shop = previewPlacement(w, "retail", { x: slot3.foot.x, y: slot3.foot.y, w: 2, h: 2 });
+  expect(shop.valid).toBe(false);
+  expect(shop.reason).toBe("Reserved for a future platform");
+  expect(previewPlacement(w, "wall", { x: slot3.foot.x + 1, y: slot3.foot.y, w: 1, h: 2 }).reason).toBe(
+    "Reserved for a future platform",
+  );
 });

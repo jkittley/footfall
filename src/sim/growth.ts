@@ -6,15 +6,18 @@ import {
   SHRINK_RATE,
   SUSTAIN_MIN,
 } from "./constants";
-import { paintSlot } from "./maps/harbourStreet";
+import { refreshAccess, removeFacility } from "./facilities";
+import { Dir, Zone, type Rect } from "./grid";
+import { paintSlot, type PlatformSlot } from "./maps/harbourStreet";
 import { nudgeToWalkable } from "./movement";
+import { refreshSigns } from "./needs";
 import { rebook, rebookContext } from "./spawner";
 import type { World } from "./world";
 
 /** Platforms added at which the subway stage unlocks. */
 const SUBWAY_AT_PLATFORMS = 10;
 
-/** Long before any game minute: marks a bucket that holds nothing. */
+/** Long before any game minute (finite, so it survives JSON): an empty bucket, or no cooldown. */
 const EMPTY = Number.MIN_SAFE_INTEGER;
 
 /**
@@ -63,7 +66,7 @@ export interface GrowthState {
 }
 
 export function newGrowthState(): GrowthState {
-  return { goodSince: null, badSince: null, cooldownUntil: -Infinity };
+  return { goodSince: null, badSince: null, cooldownUntil: EMPTY };
 }
 
 /**
@@ -134,14 +137,40 @@ function shrink(w: World): boolean {
 export function addPlatform(w: World, slotId: number): void {
   const slot = w.map.slots[slotId - 1];
   if (!slot || slotId !== w.platformsAdded + 1) throw new RangeError(`slot ${slotId} is not the next platform`);
+  clearSlot(w, slot);
   paintSlot(w.grid, slot);
   w.platformsAdded++;
   w.platformActive[slotId - 1] = true;
   settleOffBlocked(w);
+  for (const f of w.facilities.values()) refreshAccess(w, f);
+  refreshSigns(w);
   w.events.push({ kind: "toast", text: `Platform ${slotId} opens` });
   if (w.platformsAdded === SUBWAY_AT_PLATFORMS && !w.stagesUnlocked.subway) {
     w.stagesUnlocked.subway = true;
     w.events.push({ kind: "toast", text: "The subway is coming" });
+  }
+}
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+/**
+ * Building on an unopened slot is refused, but an old save may still have something there: any
+ * facility touching it comes down (its people walk on) and any travelator tile on it is cleared.
+ */
+function clearSlot(w: World, slot: PlatformSlot): void {
+  const rects = [slot.track, slot.platform, slot.foot];
+  for (const f of [...w.facilities.values()]) if (rects.some((r) => overlaps(f.rect, r))) removeFacility(w, f);
+  const g = w.grid;
+  for (const r of rects) {
+    for (let y = r.y; y < r.y + r.h; y++) {
+      for (let x = r.x; x < r.x + r.w; x++) {
+        if (g.zone(x, y) === Zone.None && g.dir[g.idx(x, y)] === Dir.None) continue;
+        g.setZone(x, y, Zone.None, -1);
+        g.setDir(x, y, Dir.None);
+      }
+    }
   }
 }
 

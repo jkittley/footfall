@@ -122,6 +122,25 @@ function isFoot(w: World, i: number): boolean {
   return w.map.slots.some((s) => x >= s.foot.x && y >= s.foot.y && x < s.foot.x + s.foot.w && y < s.foot.y + s.foot.h);
 }
 
+function inRect(r: Rect, x: number, y: number): boolean {
+  return x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h;
+}
+
+/**
+ * Tiles in the rect that a slot not yet opened keeps for itself: its track and platform take
+ * nothing, and its foot takes only floor (how the player joins it up before it opens).
+ */
+function reservedTiles(w: World, tool: ToolId, rect: Rect): number[] {
+  const g = w.grid;
+  const unopened = w.map.slots.slice(w.platformsAdded);
+  return rectTiles(g, rect).filter((i) => {
+    const [x, y] = g.xy(i);
+    return unopened.some(
+      (s) => inRect(s.track, x, y) || inRect(s.platform, x, y) || (tool !== "floor" && inRect(s.foot, x, y)),
+    );
+  });
+}
+
 function emptyPlan(tool: ToolId, rect: Rect, opts: BuildOpts): Plan {
   const preview: PlacementPreview = { tool, rect, tiles: [], blocked: [], cost: 0, valid: false, reason: null };
   if (opts.signKind !== undefined) preview.signKind = opts.signKind;
@@ -380,6 +399,13 @@ function plan(w: World, tool: ToolId, rect: Rect, opts: BuildOpts): Plan {
   else if (tool === "sign") planSign(w, p);
   else planRemove(w, p);
   const pv = p.preview;
+  if (tool !== "remove") {
+    const reserved = reservedTiles(w, tool, pv.rect);
+    if (reserved.length > 0) {
+      pv.blocked = [...new Set([...pv.blocked, ...reserved])].sort((a, b) => a - b);
+      return refuse(p, "Reserved for a future platform");
+    }
+  }
   if (!pv.valid) return p;
   if (p.edits.length > 0) {
     const after = w.grid.clone();
