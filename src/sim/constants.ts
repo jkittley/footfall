@@ -52,3 +52,14 @@ export const DRIFT_PER_TILE = 0.25;
 export const ABANDON_MARGIN_MIN = 5;
 /** Game minutes after an errand ends before a person takes up another. */
 export const ERRAND_COOLDOWN_MIN = 5;
+/** The service meter's look-back window (game minutes). */
+export const METER_WINDOW_MIN = 120;
+/** The meter shows no rate on fewer outcomes than this in its window. */
+export const MIN_SAMPLES = 30;
+/** An on-time rate at or above this, held for SUSTAIN_MIN, grows the station. */
+export const GROW_RATE = 0.9;
+/** An on-time rate below this, held for SUSTAIN_MIN, closes a platform. */
+export const SHRINK_RATE = 0.7;
+export const SUSTAIN_MIN = 180;
+/** Game minutes after a platform opens or closes before the meter can move another. */
+export const COOLDOWN_MIN = 240;

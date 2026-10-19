@@ -62,3 +62,24 @@ test("stepping the world runs the trains and keeps the timetable ahead", () => {
   for (const p of [1, 2]) expect(w.timetable.upcoming(p, w.minute + 200).length).toBeGreaterThan(0);
   for (const s of w.timetable.services.values()) expect(s.departAt).toBeGreaterThanOrEqual(w.minute - 60);
 });
+
+test("a passenger booked on a cancelled service is rebooked, not left dangling", () => {
+  const w = createWorld(6);
+  const s = firstService(w, 1);
+  const i = w.people.alloc();
+  w.people.x[i] = 10.5;
+  w.people.y[i] = 57.5;
+  w.people.state[i] = PState.Walking;
+  w.people.serviceId[i] = s.id;
+  w.people.goalKey[i] = "platform:1";
+  w.people.targetKey[i] = "platform:1";
+  s.cancelled = true;
+  s.cancelReason = "disruption";
+  w.minute += 0.5;
+  stepTrains(w);
+  const next = w.timetable.services.get(w.people.serviceId[i]!);
+  expect(next).toBeDefined();
+  expect(next!.cancelled).toBe(false);
+  expect(w.people.goalKey[i]).toBe(`platform:${next!.platformId}`);
+  expect(outcomes(w)).toEqual([]);
+});

@@ -187,6 +187,43 @@ function pickExit(w: World, exits: readonly ExitField[], tile: number): { id: st
   return { id: exit.id, walk: Math.fround(walkMinutes(exit.field, tile)) };
 }
 
+/** What rebook needs, gathered once for a batch: the active platforms' fields and the departures to come. */
+export interface RebookContext {
+  fields: Map<number, Float32Array>;
+  departures: Service[];
+}
+
+export function rebookContext(w: World): RebookContext {
+  return { fields: platformFields(w, activePlatformIds(w)), departures: w.timetable.departuresAfter(w.minute) };
+}
+
+/**
+ * A passenger whose service will not run is booked onto one they can make from where they stand,
+ * on the fair rule with MIN_SLACK_MINUTES to spare, and heads for its platform; with none that
+ * fits they leave by an exit. Records no outcome.
+ */
+export function rebook(w: World, i: number, ctx: RebookContext = rebookContext(w)): void {
+  const p = w.people;
+  const tile = Math.floor(p.y[i]!) * w.grid.w + Math.floor(p.x[i]!);
+  const booking = pickService(w, ctx.departures, ctx.fields, tile, MIN_SLACK_MINUTES, -1);
+  if (!booking) {
+    sendToExit(w, i);
+    return;
+  }
+  const oldGoal = p.goalKey[i]!;
+  const goal = `platform:${booking.service.platformId}`;
+  p.serviceId[i] = booking.service.id;
+  p.deadline[i] = booking.service.departAt;
+  p.goalKey[i] = goal;
+  // Someone mid-errand keeps at it; resuming takes them to the new goal.
+  if (p.state[i] === PState.Waiting) {
+    p.state[i] = PState.Walking;
+    p.targetKey[i] = goal;
+  } else if (p.state[i] === PState.Walking && p.targetKey[i] === oldGoal) {
+    p.targetKey[i] = goal;
+  }
+}
+
 /**
  * A passenger who missed their train and has no later service to take leaves instead: they walk
  * to an exit as an arriving passenger would, with a fair deadline from here. Their journey was

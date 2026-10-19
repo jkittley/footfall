@@ -13,6 +13,7 @@ import {
 } from "./economy";
 import { FacilityKind, arriveAtFacility, stepFacilities, type Facility } from "./facilities";
 import type { Grid, Rect } from "./grid";
+import { ServiceMeter, newGrowthState, stepGrowth, type GrowthState } from "./growth";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
 import { stepMovement } from "./movement";
 import { dropErrand, meetsNeed, stepNeeds, type Sign } from "./needs";
@@ -47,6 +48,12 @@ export interface World {
   platformsAdded: number;
   /** Index = slot id - 1. */
   platformActive: boolean[];
+  /** On-time rate of journeys, fed only by recordOutcome. */
+  meter: ServiceMeter;
+  growth: GrowthState;
+  /** Growth has been stepped for every game minute up to this one. */
+  growthUpTo: number;
+  stagesUnlocked: { subway: boolean };
   events: GameEvent[];
   stats: DayStats;
   ledger: Ledger;
@@ -76,6 +83,10 @@ export function createWorld(seed: number): World {
     trainsUpTo: START_MINUTE,
     platformsAdded: map.startingPlatforms,
     platformActive: map.slots.map((s) => s.id <= map.startingPlatforms),
+    meter: new ServiceMeter(),
+    growth: newGrowthState(),
+    growthUpTo: Math.floor(START_MINUTE),
+    stagesUnlocked: { subway: false },
     events: [],
     stats: { movedToday: 0, onTimeToday: 0, missedToday: 0 },
     ledger: new Ledger(STARTING_CASH),
@@ -151,10 +162,10 @@ export function recordOutcome(w: World, personId: number, onTime: boolean, exclu
   if (!excluded) {
     if (onTime) w.stats.onTimeToday++;
     else w.stats.missedToday++;
+    w.meter.record(w.minute, onTime);
   }
   if (!onTime) w.ledger.debit("refunds", excluded ? REFUND * DISRUPTION_REFUND_FACTOR : REFUND);
   else if (p.journey[personId] !== Journey.Arriving) w.ledger.credit("fares", FARE_BONUS);
-  // Task 13: service meter sample.
 }
 
 /**
@@ -200,6 +211,7 @@ export function step(w: World, dtReal: number): void {
   const arrived = stepMovement(w.grid, w.fields, (key) => fieldTargets(w, key), w.people, w.crowd, dtReal, w.rng);
   handleArrivals(w, arrived);
   w.crowd.rebuild(w.people, w.grid);
+  stepGrowth(w);
   rollDays(w);
 }
 

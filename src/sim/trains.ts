@@ -1,12 +1,13 @@
 import { PState } from "./people";
 import type { Service } from "./timetable";
-import { onTrainArrived, sendToExit } from "./spawner";
+import { onTrainArrived, rebook, rebookContext, sendToExit, type RebookContext } from "./spawner";
 import { recordOutcome, type World } from "./world";
 
 /**
  * Runs train events in (w.trainsUpTo, w.minute]: arrivals, boarding by anyone Waiting on their
  * platform while their train is in, and misses at departure (rebooked onto the platform's next
- * service, or sent to an exit when there is none). Working on the interval rather than the instant means a long step cannot skip one.
+ * service, or sent to an exit when there is none). Anyone booked on a service that was cancelled or
+ * is gone is rebooked rather than left waiting for it. Working on the interval rather than the instant means a long step cannot skip one.
  */
 export function stepTrains(w: World): void {
   const from = w.trainsUpTo;
@@ -23,10 +24,14 @@ export function stepTrains(w: World): void {
   }
 
   const { x, y, state, serviceId } = people;
+  let ctx: RebookContext | null = null;
   for (let i = 0, end = people.end; i < end; i++) {
     if (!people.isAlive(i) || serviceId[i]! < 0) continue;
     const s = timetable.services.get(serviceId[i]!);
-    if (!s || s.cancelled) continue;
+    if (!s || s.cancelled) {
+      rebook(w, i, (ctx ??= rebookContext(w)));
+      continue;
+    }
     if (state[i] === PState.Waiting && s.arriveAt <= to && s.departAt > from && onPlatform(w, s.platformId, x[i]!, y[i]!)) {
       recordOutcome(w, i, true, false);
       people.free(i);
