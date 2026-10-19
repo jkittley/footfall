@@ -5,6 +5,9 @@ import {
   MAX_QUEUE_TILES,
   QUEUE_GIVE_UP_MIN,
   QUEUE_LEAVE_MARGIN,
+  RENT_FOOTFALL_REF,
+  RENT_MUL_MAX,
+  RENT_MUL_MIN,
   SEAT_LEAVE_MARGIN,
   SEAT_MAX_MIN,
   TENANT_DELAY_MIN,
@@ -60,6 +63,14 @@ export interface Facility {
   footfall: { commuter: number; leisure: number };
   /** People already counted in `footfall` while the unit is to let. */
   footfallSeen: Set<number>;
+  /** Distinct people within FOOTFALL_RADIUS since midnight, let or to let; cleared at each midnight. */
+  passedSeen: Set<number>;
+  /** People counted in `passedSeen` today. */
+  footfallToday: number;
+  /** People who passed on the day before the last midnight; -1 until the unit's first midnight. */
+  footfallYesterday: number;
+  /** Scales the rent share of every sale today, set at midnight from yesterday's passers-by. */
+  rentMul: number;
   /** Person ids, front first. */
   queue: number[];
   /** Being served (retail, toilet; `until` service ends) or sitting (seating; `until` the latest they stand). */
@@ -176,6 +187,10 @@ export function createFacility(w: World, kind: FacilityKind, rect: Rect): Facili
     tenantAt: kind === FacilityKind.Retail ? w.minute + TENANT_DELAY_MIN : -1,
     footfall: { commuter: 0, leisure: 0 },
     footfallSeen: new Set(),
+    passedSeen: new Set(),
+    footfallToday: 0,
+    footfallYesterday: -1,
+    rentMul: 1,
     queue: [],
     serving: [],
     capacity: kind === FacilityKind.Retail ? Math.ceil(area / 4) : kind === FacilityKind.Toilet ? area : area * 2,
@@ -301,24 +316,68 @@ export function arriveAtFacility(w: World, f: Facility, pid: number): boolean {
   return f.kind === FacilityKind.Seating ? sit(w, f, pid) : tryJoin(w, f, pid);
 }
 
-function countFootfall(w: World, f: Facility): void {
+type Buckets = Map<number, number[]>;
+
+/** Everyone who counts as passing a unit, by the tile they stand on, so a unit reads only the tiles round it. */
+function bucketPassers(w: World): Buckets {
+  const p = w.people;
+  const gw = w.grid.w;
+  const buckets: Buckets = new Map();
+  for (let i = 0, end = p.end; i < end; i++) {
+    if (!p.isAlive(i)) continue;
+    const s = p.state[i]!;
+    if (s !== PState.Walking && s !== PState.Waiting && s !== PState.InQueue && s !== PState.Seated) continue;
+    const key = Math.floor(p.y[i]!) * gw + Math.floor(p.x[i]!);
+    const at = buckets.get(key);
+    if (at) at.push(i);
+    else buckets.set(key, [i]);
+  }
+  return buckets;
+}
+
+function countFootfall(w: World, f: Facility, buckets: Buckets): void {
   const p = w.people;
   const r = f.rect;
   const R = FOOTFALL_RADIUS;
-  for (let i = 0, end = p.end; i < end; i++) {
-    if (!p.isAlive(i) || f.footfallSeen.has(i)) continue;
-    const s = p.state[i]!;
-    if (s !== PState.Walking && s !== PState.Waiting && s !== PState.InQueue && s !== PState.Seated) continue;
-    const px = p.x[i]!;
-    const py = p.y[i]!;
-    if (px < r.x - R || px > r.x + r.w + R || py < r.y - R || py > r.y + r.h + R) continue;
-    const ddx = Math.max(r.x - px, 0, px - (r.x + r.w));
-    const ddy = Math.max(r.y - py, 0, py - (r.y + r.h));
-    if (ddx * ddx + ddy * ddy > R * R) continue;
-    f.footfallSeen.add(i);
-    if (p.leisure[i]) f.footfall.leisure++;
-    else f.footfall.commuter++;
+  const gw = w.grid.w;
+  const toLet = f.tenant === Tenant.None;
+  const x0 = Math.max(0, Math.floor(r.x - R));
+  const x1 = Math.min(gw - 1, Math.floor(r.x + r.w + R));
+  const y0 = Math.max(0, Math.floor(r.y - R));
+  const y1 = Math.min(w.grid.h - 1, Math.floor(r.y + r.h + R));
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      const here = buckets.get(ty * gw + tx);
+      if (!here) continue;
+      for (const i of here) {
+        const newToday = !f.passedSeen.has(i);
+        const newToLet = toLet && !f.footfallSeen.has(i);
+        if (!newToday && !newToLet) continue;
+        const px = p.x[i]!;
+        const py = p.y[i]!;
+        const ddx = Math.max(r.x - px, 0, px - (r.x + r.w));
+        const ddy = Math.max(r.y - py, 0, py - (r.y + r.h));
+        if (ddx * ddx + ddy * ddy > R * R) continue;
+        if (newToday) {
+          f.passedSeen.add(i);
+          f.footfallToday++;
+        }
+        if (newToLet) {
+          f.footfallSeen.add(i);
+          if (p.leisure[i]) f.footfall.leisure++;
+          else f.footfall.commuter++;
+        }
+      }
+    }
   }
+}
+
+/** At midnight: rent for the new day follows yesterday's passers-by, then the count starts again. */
+export function closeFootfallDay(f: Facility): void {
+  f.rentMul = Math.min(RENT_MUL_MAX, Math.max(RENT_MUL_MIN, f.footfallToday / RENT_FOOTFALL_REF));
+  f.footfallYesterday = f.footfallToday;
+  f.footfallToday = 0;
+  f.passedSeen.clear();
 }
 
 function moveIn(w: World, f: Facility): void {
@@ -335,7 +394,7 @@ function finishService(w: World, f: Facility, pid: number): void {
   if (f.kind === FacilityKind.Retail && f.tenant !== Tenant.None) {
     const t = TENANTS[f.tenant];
     const spend = t.spend * (p.leisure[pid] ? LEISURE_SPEND_MUL : 1);
-    w.ledger.credit("rent", spend * RENT_SHARE);
+    w.ledger.credit("rent", spend * RENT_SHARE * f.rentMul);
     f.takingsToday += spend;
     for (const need of t.meets) p.needs[base + need] = 0;
   } else if (f.kind === FacilityKind.Toilet) {
@@ -397,16 +456,17 @@ function stepSeats(w: World, f: Facility): void {
 }
 
 /**
- * Advances every facility by `dtMin` game minutes: to-let units count passers-by (once a game
- * minute) until their tenant moves in; queues shuffle forward and are served from the front;
+ * Advances every facility by `dtMin` game minutes: retail units count passers-by (once a game
+ * minute), and a to-let unit's count also steers which tenant moves in; queues shuffle forward and are served from the front;
  * seated people stand when rested or when they need to go.
  */
 export function stepFacilities(w: World, dtMin: number): void {
   const minuteTick = Math.floor(w.minute) !== Math.floor(w.minute - dtMin);
+  const buckets = minuteTick ? bucketPassers(w) : null;
   for (const f of w.facilities.values()) {
-    if (f.kind === FacilityKind.Retail && f.tenant === Tenant.None) {
-      if (f.tenantAt >= 0 && w.minute >= f.tenantAt) moveIn(w, f);
-      else if (minuteTick) countFootfall(w, f);
+    if (f.kind === FacilityKind.Retail) {
+      if (f.tenant === Tenant.None && f.tenantAt >= 0 && w.minute >= f.tenantAt) moveIn(w, f);
+      else if (buckets) countFootfall(w, f, buckets);
     }
     if (f.kind === FacilityKind.Seating) stepSeats(w, f);
     else stepQueue(w, f, dtMin);

@@ -18,7 +18,8 @@ export const SAVE_VERSION = 4;
 /** The only map so far; its layout is constant data, so a save names it rather than storing it. */
 const MAP_ID = "harbour-street";
 
-type FacilitySave = Omit<Facility, "footfallSeen"> & { footfallSeen: number[] };
+type FacilitySave = Omit<Facility, "footfallSeen" | "passedSeen" | "footfallToday" | "footfallYesterday" | "rentMul"> &
+  Partial<Pick<Facility, "footfallToday" | "footfallYesterday" | "rentMul">> & { footfallSeen: number[]; passedSeen?: number[] };
 
 /**
  * Everything that decides future steps. Not saved: the route fields and crowd counts (rebuilt from
@@ -96,7 +97,7 @@ export function serialise(w: World): string {
       services: [...w.timetable.services.values()],
       lastDepart: [...w.timetable.lastDepart],
     },
-    facilities: [...w.facilities.values()].map((f) => ({ ...f, footfallSeen: [...f.footfallSeen] })),
+    facilities: [...w.facilities.values()].map((f) => ({ ...f, footfallSeen: [...f.footfallSeen], passedSeen: [...f.passedSeen] })),
     signs: w.signs,
     disruptions: w.disruptions,
   };
@@ -166,7 +167,14 @@ export function deserialise(json: string): World {
   w.timetable.lastDepart = new Map(s.timetable.lastDepart);
 
   w.facilities = new Map();
-  for (const f of s.facilities) w.facilities.set(f.id, { ...f, footfallSeen: new Set(f.footfallSeen) });
+  for (const f of s.facilities) w.facilities.set(f.id, {
+      ...f,
+      footfallSeen: new Set(f.footfallSeen),
+      passedSeen: new Set(f.passedSeen ?? []),
+      footfallToday: f.footfallToday ?? 0,
+      footfallYesterday: f.footfallYesterday ?? -1,
+      rentMul: f.rentMul ?? 1,
+    });
   w.signs = s.signs;
   w.disruptions = s.disruptions;
   w.events = [];

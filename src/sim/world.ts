@@ -12,7 +12,7 @@ import {
   type DayStats,
   type DaySummary,
 } from "./economy";
-import { FacilityKind, arriveAtFacility, stepFacilities, type Facility } from "./facilities";
+import { FacilityKind, arriveAtFacility, closeFootfallDay, stepFacilities, type Facility } from "./facilities";
 import { Tile, Zone, type Grid, type Rect } from "./grid";
 import { ServiceMeter, newGrowthState, stepGrowth, type GrowthState } from "./growth";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
@@ -265,7 +265,10 @@ function rollDays(w: World): void {
     w.ledger.debit("maintenance", dailyUpkeep(w));
     w.events.push({ kind: "dayEnd", summary: w.ledger.closeDay(w.day, w.stats) });
     w.stats = { movedToday: 0, onTimeToday: 0, missedToday: 0 };
-    for (const f of w.facilities.values()) f.takingsToday = 0;
+    for (const f of w.facilities.values()) {
+      f.takingsToday = 0;
+      if (f.kind === FacilityKind.Retail) closeFootfallDay(f);
+    }
     w.day++;
   }
 }

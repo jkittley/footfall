@@ -9,6 +9,9 @@ import {
   holidayLine,
   isNegativeMoney,
   placementTooltip,
+  rentLine,
+  shopRentText,
+  yesterdayLine,
   toastForEvent,
 } from "../../src/ui/format";
 
@@ -127,4 +130,21 @@ test("a toast that repeats the disruption banner is skipped", () => {
   expect(toastForEvent({ kind: "toast", text }, text)).toBeNull();
   expect(toastForEvent({ kind: "toast", text: "Platform 2 reopens" }, text)).toEqual({ text: "Platform 2 reopens", style: "note" });
   expect(toastForEvent({ kind: "toast", text }, null)).toEqual({ text, style: "note" });
+});
+
+test("rentLine wording", () => {
+  expect(rentLine(1.6)).toBe("Busy spot: rent ×1.6");
+  expect(rentLine(0.8)).toBe("Quiet spot: rent ×0.8");
+  expect(rentLine(1)).toBe("Average spot: rent ×1.0");
+  expect(rentLine(1.04)).toBe("Average spot: rent ×1.0");
+  expect(rentLine(1.05)).toBe("Busy spot: rent ×1.1");
+});
+
+test("a new unit has no yesterday line and a plain rent line", () => {
+  expect(shopRentText(1, -1)).toBe("New unit: rent ×1.0");
+  expect(shopRentText(1.6, 480)).toBe("Busy spot: rent ×1.6");
+  expect(yesterdayLine(-1)).toBeNull();
+  expect(yesterdayLine(412)).toBe("Yesterday: 412 people passed");
+  expect(yesterdayLine(4120)).toBe("Yesterday: 4,120 people passed");
+  expect(yesterdayLine(1)).toBe("Yesterday: 1 person passed");
 });

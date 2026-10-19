@@ -101,3 +101,19 @@ export function toastForEvent(ev: GameEvent, bannerText: string | null = null): 
   if (ev.kind === "dayEnd") return { text: daySummaryText(ev.summary), style: "day" };
   return null;
 }
+
+/** "Busy spot: rent ×1.6", "Quiet spot: rent ×0.8" or "Average spot: rent ×1.0" (U+00D7). */
+export function rentLine(rentMul: number): string {
+  const kind = rentMul >= 1.05 ? "Busy" : rentMul <= 0.95 ? "Quiet" : "Average";
+  return `${kind} spot: rent ×${rentMul.toFixed(1)}`;
+}
+
+/** "Yesterday: 412 people passed", or null for a unit that has not seen its first midnight. */
+export function yesterdayLine(passed: number): string | null {
+  return passed < 0 ? null : `Yesterday: ${formatCount(passed)} ${passed === 1 ? "person" : "people"} passed`;
+}
+
+/** The shop panel's rent line: a unit that has not seen its first midnight has no location rating yet. */
+export function shopRentText(rentMul: number, passedYesterday: number): string {
+  return passedYesterday < 0 ? "New unit: rent ×1.0" : rentLine(rentMul);
+}

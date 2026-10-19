@@ -25,6 +25,7 @@ import { NEED_COUNT, Need, PState } from "../../src/sim/people";
 import { Rng } from "../../src/sim/rng";
 import { createWorld, fieldTargets, step, type World } from "../../src/sim/world";
 import { OX, OY, at, runMinutes } from "./helpers";
+import { RENT_FOOTFALL_REF, RENT_MUL_MAX, RENT_MUL_MIN } from "../../src/sim/constants";
 
 // A patch of floor over unopened islands 8 and 9 and the ground east of them: no spawned passenger can reach it.
 const ISLAND: Rect = at(60, 30, 20, 20);
@@ -343,4 +344,57 @@ test("a queuer leaves to make their deadline", () => {
   stepFacilities(w, 2);
   expect(p.state[a]).toBe(PState.Walking);
   expect(p.targetKey[a]).toBe("exit:A");
+});
+
+const BUSY: Rect = at(68, 40, 2, 2);
+const QUIET: Rect = at(62, 32, 2, 2);
+
+/** Runs to the next midnight, with `crowd` still people parked beside `rect` first so they are counted. */
+function passDay(w: World, rect: Rect, crowd: number): void {
+  for (let n = 0; n < crowd; n++) {
+    const i = person(w, rect.x - OX + 3, rect.y - OY + (n % 2), false);
+    w.people.state[i] = PState.Seated;
+  }
+  const day = w.day;
+  for (let n = 0; n < 1440 * 2 && w.day === day; n++) runMinutes(w, 1);
+  expect(w.day).toBe(day + 1);
+}
+
+test("a unit on the main path ends the day with a higher rent multiplier than one in a corner", () => {
+  const w = islandWorld();
+  const busy = createFacility(w, FacilityKind.Retail, BUSY);
+  const quiet = createFacility(w, FacilityKind.Retail, QUIET);
+  busy.tenant = quiet.tenant = Tenant.FoodDrink;
+  busy.tenantAt = quiet.tenantAt = -1;
+  expect(busy.rentMul).toBe(1);
+  expect(busy.footfallYesterday).toBe(-1);
+  passDay(w, BUSY, 450);
+  expect(busy.footfallYesterday).toBe(450);
+  expect(busy.rentMul).toBeCloseTo(450 / RENT_FOOTFALL_REF);
+  expect(quiet.rentMul).toBe(RENT_MUL_MIN);
+  expect(busy.rentMul).toBeGreaterThan(quiet.rentMul);
+  expect(busy.footfallToday).toBe(0);
+  expect(busy.passedSeen.size).toBe(0);
+});
+
+test("rentMul is clamped to 0.6..2.0 and applied to the next day's rent", () => {
+  const w = islandWorld();
+  const f = foodUnit(w);
+  passDay(w, UNIT, 900);
+  expect(f.rentMul).toBe(RENT_MUL_MAX);
+  const before = w.ledger.today.rent;
+  const pid = person(w, 64, 36);
+  expect(arriveAtFacility(w, f, pid)).toBe(true);
+  serveThrough(w, pid);
+  expect(w.ledger.today.rent - before).toBeCloseTo(TENANTS[Tenant.FoodDrink].spend * RENT_SHARE * RENT_MUL_MAX);
+  expect(f.takingsToday).toBeCloseTo(TENANTS[Tenant.FoodDrink].spend);
+});
+
+test("a let unit counts passers-by without disturbing a to-let unit's tenant footfall", () => {
+  const w = islandWorld();
+  const f = createFacility(w, FacilityKind.Retail, UNIT);
+  person(w, UNIT.x + 3 - OX, UNIT.y - OY, true);
+  runMinutes(w, 2);
+  expect(f.footfallToday).toBe(1);
+  expect(f.footfall.leisure).toBe(1);
 });

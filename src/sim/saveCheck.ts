@@ -1,4 +1,4 @@
-import { METER_WINDOW_MIN } from "./constants";
+import { METER_WINDOW_MIN, RENT_MUL_MAX, RENT_MUL_MIN } from "./constants";
 import { LEDGER_LINES } from "./economy";
 import { FacilityKind } from "./facilityKinds";
 
@@ -54,6 +54,11 @@ function facility(o: Obj, at: string): void {
   nums(obj(o.rect, at + "rect"), ["x", "y", "w", "h"], at + "rect.");
   nums(obj(o.footfall, at + "footfall"), ["commuter", "leisure"], at + "footfall.");
   for (const k of ["serviceTiles", "queueTiles", "footfallSeen", "queue"]) numList(o[k], at + k);
+  // Saves written before rent by location lack these; they load with the defaults.
+  if (o.rentMul !== undefined) need(finite(o.rentMul) && o.rentMul >= RENT_MUL_MIN && o.rentMul <= RENT_MUL_MAX, at + "rentMul");
+  if (o.footfallToday !== undefined) need(finite(o.footfallToday) && o.footfallToday >= 0, at + "footfallToday");
+  if (o.footfallYesterday !== undefined) need(finite(o.footfallYesterday) && o.footfallYesterday >= -1, at + "footfallYesterday");
+  if (o.passedSeen !== undefined) numList(o.passedSeen, at + "passedSeen");
   objects(o.serving, at + "serving", (s, sat) => nums(s, ["pid", "until"], sat));
 }
 

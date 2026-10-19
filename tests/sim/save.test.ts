@@ -253,3 +253,33 @@ test("gate waits in progress (who waits at which gate, since when, and each gate
   step(b, 1 / 60);
   expect(serialise(b)).toBe(serialise(a));
 });
+
+test("footfallToday and rentMul survive save and load", () => {
+  const a = furnishedWorld(9);
+  const f = [...a.facilities.values()].find((x) => x.kind === FacilityKind.Retail)!;
+  f.rentMul = 1.7;
+  f.footfallToday = 123;
+  f.footfallYesterday = 456;
+  f.passedSeen.add(5);
+  const b = deserialise(serialise(a));
+  const g = b.facilities.get(f.id)!;
+  expect([g.rentMul, g.footfallToday, g.footfallYesterday, [...g.passedSeen]]).toEqual([1.7, 123, 456, [5]]);
+});
+
+test("a v4 save without the rent fields loads with defaults, and out-of-range ones are refused", () => {
+  const a = furnishedWorld(9);
+  const raw = JSON.parse(serialise(a));
+  for (const f of raw.facilities) {
+    delete f.rentMul;
+    delete f.footfallToday;
+    delete f.footfallYesterday;
+    delete f.passedSeen;
+  }
+  const g = [...deserialise(JSON.stringify(raw)).facilities.values()][0]!;
+  expect([g.rentMul, g.footfallToday, g.footfallYesterday, g.passedSeen.size]).toEqual([1, 0, -1, 0]);
+  raw.facilities[0].rentMul = 5;
+  expect(() => deserialise(JSON.stringify(raw))).toThrow("Corrupt save");
+  raw.facilities[0].rentMul = 1;
+  raw.facilities[0].footfallToday = -1;
+  expect(() => deserialise(JSON.stringify(raw))).toThrow("Corrupt save");
+});

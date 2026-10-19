@@ -5,7 +5,7 @@ import { FacilityKind, Tenant } from "../sim/facilityKinds";
 import { NEED_COUNT, type PState } from "../sim/people";
 import type { World } from "../sim/world";
 import { CLOSE_ICON, button, el, setText } from "./dom";
-import { formatMoney } from "./format";
+import { formatMoney, shopRentText, yesterdayLine } from "./format";
 import { NEED_LABELS, errandLine, goalFacts, goalLine, timeLeftIsShort, walkFromHere } from "./personText";
 
 /** How long "Left the station" shows before the card closes (real ms). */
@@ -131,6 +131,8 @@ export class ShopPanel {
   private readonly card = el("div", "card");
   private readonly title = el("div", "card-title");
   private readonly takings = el("span", "card-big mono");
+  private readonly rent = el("div", "muted");
+  private readonly yesterday = el("div", "muted mono");
   private readonly evict: HTMLButtonElement;
 
   constructor(
@@ -150,7 +152,7 @@ export class ShopPanel {
         if (this.facilityId !== null) this.onEvict(this.facilityId);
       },
     });
-    this.card.append(close, this.title, row, this.evict);
+    this.card.append(close, this.title, row, this.rent, this.yesterday, this.evict);
     root.append(this.card);
   }
 
@@ -182,6 +184,10 @@ export class ShopPanel {
     }
     setText(this.title, runsText(retailLabel(f, w.minute)));
     setText(this.takings, formatMoney(f.takingsToday));
+    setText(this.rent, shopRentText(f.rentMul, f.footfallYesterday));
+    const passed = yesterdayLine(f.footfallYesterday);
+    this.yesterday.hidden = passed === null;
+    setText(this.yesterday, passed ?? "");
     this.evict.disabled = f.tenant === Tenant.None || !w.ledger.canAfford(PRICES.evict);
   }
 }

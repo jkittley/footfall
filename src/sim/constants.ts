@@ -24,6 +24,10 @@ export const CONNECT_SHARE = 0.15;
 export const TENANT_DELAY_MIN = 40;
 /** A to-let unit counts passers-by within this many tiles of it. */
 export const FOOTFALL_RADIUS = 6;
+/** Passers-by in a day that put a unit's rent multiplier at 1.0. */
+export const RENT_FOOTFALL_REF = 300;
+export const RENT_MUL_MIN = 0.6;
+export const RENT_MUL_MAX = 2.0;
 /** A seated person stands this many minutes earlier than their walk to the goal strictly needs. */
 export const SEAT_LEAVE_MARGIN = 5;
 /** Nobody sits longer than this (game minutes). */
