@@ -178,16 +178,26 @@ export class PeopleStore {
 
   static fromSave(cap: number, s: PeopleSave): PeopleStore {
     const p = new PeopleStore(cap);
-    if (s.top > cap || s.count > s.top || s.freeTop > s.top) throw new Error("Save does not fit the people store");
+    const int = (n: unknown): n is number => Number.isInteger(n);
+    if (!int(s.top) || !int(s.count) || !int(s.freeTop) || s.count < 0 || s.freeTop < 0 || s.top > cap) {
+      throw new Error("Corrupt save: people");
+    }
+    // Every slot ever handed out is either alive or on the free list.
+    if (s.count + s.freeTop !== s.top) throw new Error("Corrupt save: people.count");
+    if (typeof s.arrays !== "object" || s.arrays === null || typeof s.strings !== "object" || s.strings === null) {
+      throw new Error("Corrupt save: people");
+    }
     for (const [name, v] of Object.entries(p)) {
       if (ArrayBuffer.isView(v)) {
         const b64 = s.arrays[name];
-        if (b64 === undefined || decodeBytesInto(v, b64) !== (v.byteLength / cap) * s.top) {
-          throw new Error(`Save has a bad people.${name}`);
+        if (decodeBytesInto(v, b64) !== (v.byteLength / cap) * s.top) {
+          throw new Error(`Corrupt save: people.${name}`);
         }
       } else if (Array.isArray(v)) {
         const xs = s.strings[name];
-        if (xs === undefined || xs.length !== s.top) throw new Error(`Save has a bad people.${name}`);
+        if (!Array.isArray(xs) || xs.length !== s.top || !xs.every((x) => typeof x === "string")) {
+          throw new Error(`Corrupt save: people.${name}`);
+        }
         for (let i = 0; i < xs.length; i++) v[i] = xs[i];
       }
     }

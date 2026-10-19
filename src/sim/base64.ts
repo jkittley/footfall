@@ -11,10 +11,19 @@ export function encodeBytes(v: ArrayBufferView, byteLength: number = v.byteLengt
   return btoa(s);
 }
 
-/** Writes decoded base64 over the start of a typed array; returns how many bytes it wrote. */
-export function decodeBytesInto(v: ArrayBufferView, b64: string): number {
-  const s = atob(b64);
-  if (s.length > v.byteLength) throw new Error("Save data does not fit");
+/**
+ * Writes decoded base64 over the start of a typed array; returns how many bytes it wrote, or -1
+ * (writing nothing) when it is not base64 or does not fit.
+ */
+export function decodeBytesInto(v: ArrayBufferView, b64: unknown): number {
+  if (typeof b64 !== "string") return -1;
+  let s: string;
+  try {
+    s = atob(b64);
+  } catch {
+    return -1;
+  }
+  if (s.length > v.byteLength) return -1;
   const bytes = new Uint8Array(v.buffer, v.byteOffset, s.length);
   for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
   return s.length;

@@ -4,9 +4,11 @@ import type { Disruption } from "./disruptions";
 import { Ledger, type DayStats, type LedgerLine } from "./economy";
 import type { Facility } from "./facilities";
 import type { GrowthState } from "./growth";
+import { HARBOUR_STREET } from "./maps/harbourStreet";
 import type { Sign } from "./needs";
 import { PeopleStore, type PeopleSave } from "./people";
 import { Rng } from "./rng";
+import { checkSave } from "./saveCheck";
 import { Timetable, type Service } from "./timetable";
 import { createWorld, type World } from "./world";
 
@@ -49,6 +51,11 @@ interface SaveFile {
   disruptions: Disruption[];
 }
 
+/**
+ * Hands the world's live objects (stats, signs, the meter's arrays, …) straight to JSON.stringify
+ * within this call rather than copying them first; nothing here may hold on to one afterwards.
+ * deserialise likewise adopts the parsed objects as the new world's own.
+ */
 export function serialise(w: World): string {
   const g = w.grid;
   const save: SaveFile = {
@@ -91,7 +98,7 @@ export function serialise(w: World): string {
 }
 
 function restoreBytes(v: ArrayBufferView, b64: string, name: string): void {
-  if (decodeBytesInto(v, b64) !== v.byteLength) throw new Error(`Save has a bad ${name}`);
+  if (decodeBytesInto(v, b64) !== v.byteLength) throw new Error(`Corrupt save: ${name}`);
 }
 
 /**
@@ -100,8 +107,9 @@ function restoreBytes(v: ArrayBufferView, b64: string, name: string): void {
  */
 export function deserialise(json: string): World {
   const s: SaveFile = JSON.parse(json);
-  if (s.version !== SAVE_VERSION) throw new Error("Unsupported save version");
+  if (typeof s !== "object" || s === null || s.version !== SAVE_VERSION) throw new Error("Unsupported save version");
   if (s.map !== MAP_ID) throw new Error(`Unknown map ${s.map}`);
+  checkSave(s, HARBOUR_STREET.slots.length);
 
   const w = createWorld(s.seed);
   w.rng = Rng.fromState(s.rng);

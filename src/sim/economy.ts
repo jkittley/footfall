@@ -3,7 +3,7 @@ import type { World } from "./world";
 
 export type LedgerLine = "rent" | "fares" | "refunds" | "build" | "maintenance" | "evictions" | "removals";
 
-const LINES: readonly LedgerLine[] = ["rent", "fares", "refunds", "build", "maintenance", "evictions", "removals"];
+export const LEDGER_LINES: readonly LedgerLine[] = ["rent", "fares", "refunds", "build", "maintenance", "evictions", "removals"];
 // Removal refunds come back as income.
 const INCOME_LINES: ReadonlySet<LedgerLine> = new Set<LedgerLine>(["rent", "fares", "removals"]);
 
@@ -84,7 +84,7 @@ export class Ledger {
   closeDay(day: number, stats: DayStats): DaySummary {
     let income = 0;
     let costs = 0;
-    for (const line of LINES) {
+    for (const line of LEDGER_LINES) {
       if (INCOME_LINES.has(line)) income += this.today[line];
       else costs += this.today[line];
     }
