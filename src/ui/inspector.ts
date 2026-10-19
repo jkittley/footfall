@@ -25,7 +25,7 @@ function clampToWindow(x: number, y: number, w: number, h: number): [number, num
 /** The card for one person: goal, time left, errand and needs. It follows them round the station. */
 export class Inspector {
   pid: number | null = null;
-  private spawnedAt = 0;
+  private serial = 0;
   private leftAt: number | null = null;
   private readonly card = el("div", "card");
   private readonly title = el("div", "card-title");
@@ -67,7 +67,7 @@ export class Inspector {
 
   open(w: World, pid: number): void {
     this.pid = pid;
-    this.spawnedAt = w.people.spawnedAt[pid]!;
+    this.serial = w.people.serial[pid]!;
     this.leftAt = null;
     this.details.hidden = false;
     this.card.hidden = false;
@@ -83,8 +83,8 @@ export class Inspector {
   /** True while the person it shows is still in the station. */
   tracking(w: World): boolean {
     const pid = this.pid;
-    // A freed slot may be handed straight to someone new: spawnedAt tells them apart.
-    return pid !== null && w.people.isAlive(pid) && w.people.spawnedAt[pid] === this.spawnedAt;
+    // A freed slot may be handed straight to someone new: the serial tells them apart.
+    return pid !== null && w.people.isAlive(pid) && w.people.serial[pid] === this.serial;
   }
 
   update(w: World, cam: Camera, now: number): void {

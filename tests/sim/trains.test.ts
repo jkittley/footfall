@@ -40,11 +40,15 @@ test("a passenger not on the platform at departure misses once and is rebooked",
   w.people.y[i] = OY + 70.5;
   w.people.state[i] = PState.Walking;
   w.people.serviceId[i] = s.id;
+  w.people.deadline[i] = s.departAt;
 
   w.minute = s.departAt + 0.01;
   stepTrains(w);
-  const next = w.timetable.upcoming(1, s.departAt)[0]!;
-  expect(w.people.serviceId[i]).toBe(next.id);
+  const next = w.timetable.services.get(w.people.serviceId[i]!)!;
+  expect(next.id).not.toBe(s.id);
+  expect(next.departAt).toBeGreaterThan(w.minute);
+  // The new booking comes with its own fair deadline, not the one already past.
+  expect(w.people.deadline[i]).toBe(next.departAt);
   expect(w.people.counted[i]).toBe(1);
 
   w.minute = next.departAt + 0.01;

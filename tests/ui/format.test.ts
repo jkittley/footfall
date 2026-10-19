@@ -82,7 +82,7 @@ const range = (n: number): number[] => Array.from({ length: n }, (_, i) => i);
 
 test("floor tooltip reads tiles, cost and balance", () => {
   const t = placementTooltip(pv({ tiles: range(88), cost: 8800 }), 12450);
-  expect(t).toEqual({ text: "New floor · 88 tiles · £8,800 · you have £12,450", reason: null });
+  expect(t).toEqual({ text: "Floor · 88 tiles · £8,800 · you have £12,450", reason: null });
 });
 
 test("other tools use their names", () => {
@@ -92,7 +92,7 @@ test("other tools use their names", () => {
   expect(placementTooltip(pv({ tool: "sign", rect: { x: 0, y: 0, w: 1, h: 1 }, tiles: [3], cost: 150 }), -50).text).toBe(
     "Sign · 1 tile · £150 · you have −£50",
   );
-  const names = { seating: "Seating", toilet: "Toilets", wall: "Wall", rail: "Queue rail", travelator: "Travelator" } as const;
+  const names = { seating: "Seating", toilet: "Toilets", wall: "Wall", rail: "Rail", travelator: "Travelator" } as const;
   for (const [tool, name] of Object.entries(names)) {
     const t = placementTooltip(pv({ tool: tool as PlacementPreview["tool"], rect: { x: 0, y: 0, w: 1, h: 2 }, tiles: [1, 2], cost: 40 }), 100);
     expect(t.text).toBe(`${name} · 2 tiles · £40 · you have £100`);
@@ -111,6 +111,8 @@ test("a facility counts its whole rect even where blocked", () => {
 
 test("remove shows the refund", () => {
   expect(placementTooltip(pv({ tool: "remove", tiles: range(6), cost: -300 }), 100)).toEqual({ text: "Remove · 6 tiles · +£300", reason: null });
+  // Nothing the player built: no refund to show.
+  expect(placementTooltip(pv({ tool: "remove", tiles: range(2), cost: 0 }), 100).text).toBe("Remove · 2 tiles");
 });
 
 test("an invalid preview carries its reason", () => {

@@ -7,7 +7,7 @@ import { Dir, type Rect } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
 import { SAVE_VERSION, deserialise, serialise } from "../../src/sim/save";
 import { trainPhase } from "../../src/sim/timetable";
-import { Ledger } from "../../src/sim/economy";
+import { Ledger, PRICES, REMOVE_REFUND } from "../../src/sim/economy";
 import { Grid } from "../../src/sim/grid";
 import { ServiceMeter } from "../../src/sim/growth";
 import { Timetable } from "../../src/sim/timetable";
@@ -135,7 +135,7 @@ test("each class the save takes apart has only the fields it handles", () => {
   expect(Object.keys(new Ledger(0)).sort()).toEqual(["balance", "today"]);
   expect(Object.keys(new Timetable()).sort()).toEqual(["lastDepart", "nextId", "services"]);
   expect(Object.keys(new ServiceMeter()).sort()).toEqual(["minutes", "onTime", "total"]);
-  expect(Object.keys(new Grid(1, 1)).sort()).toEqual(["dir", "h", "tiles", "version", "w", "zoneOwner", "zones"]);
+  expect(Object.keys(new Grid(1, 1)).sort()).toEqual(["built", "dir", "h", "tiles", "version", "w", "zoneOwner", "zones"]);
 });
 
 test("a world saved and loaded every half hour across a day keeps stepping like the original", () => {
@@ -298,4 +298,33 @@ test("person serials survive a save, and a save without them falls back to slot 
   const c = deserialise(JSON.stringify(raw));
   expect(c.people.serial[0]).toBe(0);
   expect(c.people.serial[c.people.alloc()]).toBeGreaterThanOrEqual(c.people.end - 1);
+});
+
+test("what the player built survives a save, and a save without it takes whatever changed since the start as theirs", () => {
+  const a = createWorld(1);
+  const line = a.map.islands[0]!.gateLine;
+  const gate = { x: line.x, y: line.y, w: 1, h: 1 };
+  const floor = at(5, 59, 1, 1);
+  expect(applyPlacement(a, previewPlacement(a, "gate", gate))).toBe(true);
+  expect(applyPlacement(a, previewPlacement(a, "floor", floor))).toBe(true);
+  const refunds = (w: World): number[] =>
+    [gate, floor, at(6, 59, 1, 1), { x: line.x + 1, y: line.y, w: 1, h: 1 }].map((r) => previewPlacement(w, "remove", r).cost);
+  const expected = [-REMOVE_REFUND * PRICES.gate, -REMOVE_REFUND * PRICES.floor, 0, 0];
+  expect(refunds(deserialise(serialise(a)))).toEqual(expected);
+  const raw = JSON.parse(serialise(a));
+  delete raw.grid.built;
+  expect(refunds(deserialise(JSON.stringify(raw)))).toEqual(expected);
+});
+
+test("the daily growth rule's state survives a save, and a save without it loads as no day closed yet", () => {
+  const a = createWorld(1);
+  a.growth.lastDayRate = 0.75;
+  a.growth.badDays = 1;
+  expect(deserialise(serialise(a)).growth).toMatchObject({ lastDayRate: 0.75, badDays: 1 });
+  const raw = JSON.parse(serialise(a));
+  delete raw.growth.lastDayRate;
+  delete raw.growth.badDays;
+  expect(deserialise(JSON.stringify(raw)).growth).toMatchObject({ lastDayRate: null, badDays: 0 });
+  raw.growth.badDays = "x";
+  expect(() => deserialise(JSON.stringify(raw))).toThrow("Corrupt save");
 });

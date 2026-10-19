@@ -239,7 +239,8 @@ test("people are only put on, and sent to, walkable platform tiles", () => {
 test("a passenger who misses the last service heads for an exit, counted once", () => {
   const w = createWorld(12);
   const s = w.timetable.upcoming(1, w.minute)[0]!;
-  for (const [id, other] of w.timetable.services) if (other.platformId === 1 && other.departAt > s.departAt) w.timetable.services.delete(id);
+  // No later service on any platform: a miss is rebooked anywhere it can be made.
+  for (const [id, other] of w.timetable.services) if (other.departAt > s.departAt) w.timetable.services.delete(id);
   const i = w.people.alloc();
   w.people.x[i] = OX + 10.5;
   w.people.y[i] = OY + 70.5;

@@ -1,5 +1,5 @@
 import type { Camera } from "./camera";
-import { Journey, Mode, type PeopleStore } from "../sim/people";
+import { Journey, Mode, PState, type PeopleStore } from "../sim/people";
 import { FLOOR, MODE_COLOURS } from "./palette";
 import { CIRCLE_R, leftHalf, POLYS, type Pt } from "./shapes";
 
@@ -39,6 +39,11 @@ function addShape(p: Path2D, m: Mode, half: boolean, sx: number, sy: number, k: 
   p.closePath();
 }
 
+/** Alive and not being served inside a facility (drawn at its counter, they would cover the next in its queue). */
+export function isDrawn(people: PeopleStore, i: number): boolean {
+  return people.isAlive(i) && people.state[i] !== PState.InFacility;
+}
+
 // Rebuilt each frame: one full-shape path and one left-half path per (mode, journey).
 const full: Path2D[] = [];
 const half: Path2D[] = [];
@@ -56,7 +61,7 @@ export function drawPeople2d(ctx: CanvasRenderingContext2D, cam: Camera, people:
   const [ox, oy] = cam.worldToScreen(0, 0);
   const scale = cam.scale;
   for (let i = 0, end = people.end; i < end; i++) {
-    if (!people.isAlive(i)) continue;
+    if (!isDrawn(people, i)) continue;
     const sx = Math.round((ox + x[i]! * scale) * ROUND) / ROUND;
     const sy = Math.round((oy + y[i]! * scale) * ROUND) / ROUND;
     const m = mode[i]! as Mode;

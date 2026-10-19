@@ -64,11 +64,13 @@ export const ERRAND_COOLDOWN_MIN = 5;
 export const METER_WINDOW_MIN = 120;
 /** The meter shows no rate on fewer outcomes than this in its window. */
 export const MIN_SAMPLES = 30;
-/** An on-time rate at or above this, held for SUSTAIN_MIN, grows the station. */
+/** An on-time rate at or above this, held for SUSTAIN_MIN after a whole day at or above it, grows the station. */
 export const GROW_RATE = 0.9;
-/** An on-time rate below this, held for SUSTAIN_MIN, closes a platform. */
-export const SHRINK_RATE = 0.7;
+/** An on-time rate below this, held for SUSTAIN_MIN or over SHRINK_DAYS whole days, closes a platform. */
+export const SHRINK_RATE = 0.8;
 export const SUSTAIN_MIN = 480;
+/** Whole days in a row with a day's on-time rate below SHRINK_RATE that close a platform. */
+export const SHRINK_DAYS = 1;
 /** Game minutes after a platform opens or closes before the meter can move another. */
 export const COOLDOWN_MIN = 3000;
 /** Average signal failures per game day. */

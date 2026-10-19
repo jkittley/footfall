@@ -1,8 +1,7 @@
 // Dev only (index.html?debug=render): the renderer on a world with every piece in it, live, with
 // wheel zoom, drag to pan, click to select a person and a retail preview that follows the cursor
 // (Esc hides it, B brings it back). ?speed=1 (default 3), ?zoom=2&centre=18,56 to frame a close look
-// (centre in the station's own coordinates).
-// Task 17 builds the real game page.
+// (centre in the station's own coordinates). The game itself is src/main.ts.
 import { previewPlacement } from "./sim/build";
 import { MAX_STEPS_PER_FRAME, SIM_DT } from "./sim/constants";
 import { PState } from "./sim/people";

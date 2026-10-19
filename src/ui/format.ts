@@ -9,13 +9,14 @@ const DAY = 1440;
 const MINUS = "−";
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+/** Each tool's name, on the tool rail and in the placement tooltip alike. */
 export const TOOL_NAMES: Record<ToolId, string> = {
-  floor: "New floor",
+  floor: "Floor",
   retail: "Shop",
   seating: "Seating",
   toilet: "Toilets",
   wall: "Wall",
-  rail: "Queue rail",
+  rail: "Rail",
   gate: "Gate",
   sign: "Sign",
   travelator: "Travelator",
@@ -78,14 +79,15 @@ export interface Tooltip {
   reason: string | null;
 }
 
-/** "New floor · 88 tiles · £8,800 · you have £12,450", or "Remove · 6 tiles · +£300". */
+/** "Floor · 88 tiles · £8,800 · you have £12,450", "Remove · 6 tiles · +£300", or "Remove · 2 tiles" with nothing to refund. */
 export function placementTooltip(pv: PlacementPreview, balance: number): Tooltip {
   // A facility or gate counts its whole rect, so the tooltip reads the same over a tile it can't take.
   const whole = pv.tool === "retail" || pv.tool === "toilet" || pv.tool === "seating" || pv.tool === "gate";
   const n = whole ? pv.rect.w * pv.rect.h : pv.tiles.length;
   const tiles = `${formatCount(n)} ${n === 1 ? "tile" : "tiles"}`;
   const reason = pv.valid ? null : pv.reason;
-  if (pv.tool === "remove") return { text: `Remove · ${tiles} · ${formatSignedMoney(-pv.cost)}`, reason };
+  // Only what the player built refunds anything; with nothing of theirs the refund is left out.
+  if (pv.tool === "remove") return { text: pv.cost < 0 ? `Remove · ${tiles} · ${formatSignedMoney(-pv.cost)}` : `Remove · ${tiles}`, reason };
   return { text: `${TOOL_NAMES[pv.tool]} · ${tiles} · ${formatMoney(pv.cost)} · you have ${formatMoney(balance)}`, reason };
 }
 

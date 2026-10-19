@@ -14,7 +14,7 @@ import {
 } from "./economy";
 import { FacilityKind, arriveAtFacility, closeFootfallDay, stepFacilities, type Facility } from "./facilities";
 import { Tile, Zone, type Grid, type Rect } from "./grid";
-import { ServiceMeter, newGrowthState, stepGrowth, type GrowthState } from "./growth";
+import { ServiceMeter, closeGrowthDay, newGrowthState, stepGrowth, type GrowthState } from "./growth";
 import { HARBOUR_STREET, buildGrid, type StationMap } from "./maps/harbourStreet";
 import { createTurnstiles, stepMovement, type Turnstiles } from "./movement";
 import { dropErrand, meetsNeed, stepNeeds, type Sign } from "./needs";
@@ -235,9 +235,9 @@ export function step(w: World, dtReal: number): void {
   w.minute += dtReal * GAME_MIN_PER_REAL_SEC;
   w.timetable.ensureHorizon(w.minute, activePlatformIds(w), w.rng);
   w.timetable.prune(w.minute - PRUNE_AFTER_MIN);
-  // Order of the step functions as later tasks slot in:
-  //   crowd -> disruptions -> trains -> spawner (Task 8) -> needs (Task 11) -> facilities (Task 10)
-  //   -> movement -> growth (Task 13) -> economy day rollover (Task 9) -> autosave
+  // Disruptions first, so trains see today's cancellations; trains before the spawner, so new
+  // passengers book onto the timetable as it stands; growth and the day's close after movement,
+  // so they count every outcome of this step.
   stepDisruptions(w, dtReal * GAME_MIN_PER_REAL_SEC);
   stepTrains(w);
   stepSpawner(w, dtReal * GAME_MIN_PER_REAL_SEC);
@@ -264,6 +264,7 @@ function rollDays(w: World): void {
   while (w.day < today) {
     w.ledger.debit("maintenance", dailyUpkeep(w));
     w.events.push({ kind: "dayEnd", summary: w.ledger.closeDay(w.day, w.stats) });
+    closeGrowthDay(w, w.stats.onTimeToday, w.stats.missedToday, (w.day + 1) * 1440);
     w.stats = { movedToday: 0, onTimeToday: 0, missedToday: 0 };
     for (const f of w.facilities.values()) {
       f.takingsToday = 0;

@@ -1,4 +1,5 @@
 import type { Camera } from "../render/camera";
+import { isDrawn } from "../render/drawPeople2d";
 import type { UiOverlayState } from "../render/renderer";
 import { applyPlacement, previewPlacement, type PlacementPreview } from "../sim/build";
 import { FacilityKind } from "../sim/facilityKinds";
@@ -226,7 +227,7 @@ export class Input {
     let best: number | null = null;
     let bestD = Math.max(PICK_MIN_TILES, PICK_PX / cam.scale);
     for (let i = 0; i < p.end; i++) {
-      if (!p.isAlive(i)) continue;
+      if (!isDrawn(p, i)) continue;
       const d = Math.hypot(p.x[i]! - wx, p.y[i]! - wy);
       if (d < bestD) {
         bestD = d;

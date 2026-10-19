@@ -89,7 +89,7 @@ function dayShape(m: number): number {
 }
 
 function holidayFactor(m: number): number {
-  if (isSummer(m)) return 1.3;
+  if (isSummer(m)) return 1.15;
   if (isChristmas(m)) return 1.5;
   return 1;
 }

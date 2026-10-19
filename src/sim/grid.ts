@@ -39,6 +39,11 @@ export enum Dir {
   None = 255,
 }
 
+/** Bits of Grid.built: what on a tile the player paid for (removing refunds only these). */
+export const BUILT_FLOOR = 1;
+/** A wall, rail or opened gate standing on the tile. */
+export const BUILT_TOP = 2;
+
 export interface Rect {
   x: number;
   y: number;
@@ -54,6 +59,8 @@ export class Grid {
   /** Owning facility id per tile, -1 for none. */
   zoneOwner: Int32Array;
   dir: Uint8Array;
+  /** BUILT_FLOOR | BUILT_TOP per tile; the starting station and whatever opening a platform paints are 0. */
+  built: Uint8Array;
   /** Bumped by every mutator so caches (e.g. flow fields) know to rebuild. */
   version = 0;
 
@@ -64,6 +71,7 @@ export class Grid {
     this.zones = new Uint8Array(w * h);
     this.zoneOwner = new Int32Array(w * h).fill(-1);
     this.dir = new Uint8Array(w * h).fill(Dir.None);
+    this.built = new Uint8Array(w * h);
   }
 
   idx(x: number, y: number): number {
@@ -118,6 +126,7 @@ export class Grid {
     g.zones = this.zones.slice();
     g.zoneOwner = this.zoneOwner.slice();
     g.dir = this.dir.slice();
+    g.built = this.built.slice();
     g.version = this.version;
     return g;
   }

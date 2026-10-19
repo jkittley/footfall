@@ -1,14 +1,15 @@
 import { Tile, Zone } from "./grid";
 import { PState } from "./people";
-import type { Service } from "./timetable";
-import { onTrainArrived, rebook, rebookContext, sendToExit, type RebookContext } from "./spawner";
+import { onTrainArrived, rebook, rebookContext, type RebookContext } from "./spawner";
 import { recordOutcome, type World } from "./world";
 
 /**
  * Runs train events in (w.trainsUpTo, w.minute]: arrivals, boarding by anyone Waiting on their
- * platform while their train is in, and misses at departure (rebooked onto the platform's next
- * service, or sent to an exit when there is none). Anyone booked on a service that was cancelled or
- * is gone is rebooked rather than left waiting for it. Working on the interval rather than the instant means a long step cannot skip one.
+ * platform while their train is in, and misses at departure (rebooked as for a cancellation, onto
+ * a service they can make from where they stand, with its departure as their new deadline, or sent
+ * to an exit when there is none). Anyone booked on a service that was cancelled or is gone is
+ * rebooked rather than left waiting for it. Working on the interval rather than the instant means a
+ * long step cannot skip one.
  */
 export function stepTrains(w: World): void {
   const from = w.trainsUpTo;
@@ -17,11 +18,11 @@ export function stepTrains(w: World): void {
   w.trainsUpTo = to;
   const { timetable, people } = w;
 
-  let departed: Map<number, Service | undefined> | null = null;
+  let departed: Set<number> | null = null;
   for (const s of timetable.services.values()) {
     if (s.cancelled) continue;
     if (s.arriveAt > from && s.arriveAt <= to) onTrainArrived(w, s);
-    if (s.departAt > from && s.departAt <= to) (departed ??= new Map()).set(s.id, undefined);
+    if (s.departAt > from && s.departAt <= to) (departed ??= new Set()).add(s.id);
   }
 
   const { x, y, state, serviceId } = people;
@@ -40,13 +41,7 @@ export function stepTrains(w: World): void {
     }
     if (departed?.has(s.id)) {
       recordOutcome(w, i, false, false);
-      let next = departed.get(s.id);
-      if (!next) {
-        next = timetable.upcoming(s.platformId, s.departAt)[0];
-        departed.set(s.id, next);
-      }
-      if (next) serviceId[i] = next.id;
-      else sendToExit(w, i);
+      rebook(w, i, (ctx ??= rebookContext(w)));
     }
   }
 }

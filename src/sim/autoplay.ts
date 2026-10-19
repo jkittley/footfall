@@ -295,6 +295,10 @@ export interface DayRow {
   day: number;
   added: number;
   active: number;
+  /** Platforms closed during the day (the service meter's shrink rules). */
+  closed: number;
+  /** Inactive platforms reopened during the day. */
+  reopened: number;
   moved: number;
   /** On-time share of the day's counted journeys (disruptions excluded), or null with none. */
   onTime: number | null;
@@ -321,6 +325,10 @@ export function playDays(w: World, days: number, player: Autoplay | null, onDay?
   const until = w.minute + days * 1440;
   let worst: number | null = null;
   let peak = 0;
+  let closed = 0;
+  let reopened = 0;
+  let active = w.platformActive.filter(Boolean).length;
+  let added = w.platformsAdded;
   let lastMinute = Math.floor(w.minute);
   while (w.minute < until) {
     step(w, SIM_DT);
@@ -332,6 +340,11 @@ export function playDays(w: World, days: number, player: Autoplay | null, onDay?
       if (r !== null && (worst === null || r < worst)) worst = r;
       for (const isl of openedIslands(w)) peak = Math.max(peak, gateQueue(w, isl));
     }
+    const nowActive = w.platformActive.filter(Boolean).length;
+    if (nowActive < active) closed += active - nowActive;
+    else if (nowActive > active && w.platformsAdded === added) reopened += nowActive - active;
+    active = nowActive;
+    added = w.platformsAdded;
     for (const e of w.events) {
       if (e.kind !== "dayEnd") continue;
       const s = e.summary;
@@ -340,6 +353,8 @@ export function playDays(w: World, days: number, player: Autoplay | null, onDay?
         day: s.day,
         added: w.platformsAdded,
         active: w.platformActive.filter(Boolean).length,
+        closed,
+        reopened,
         moved: s.moved,
         onTime: counted > 0 ? s.onTime / counted : null,
         worstMeter: worst,
@@ -354,6 +369,8 @@ export function playDays(w: World, days: number, player: Autoplay | null, onDay?
       onDay?.(row);
       worst = null;
       peak = 0;
+      closed = 0;
+      reopened = 0;
     }
     w.events.length = 0;
   }

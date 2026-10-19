@@ -8,7 +8,7 @@ Browser: `/bench.html` via `npm run dev`; read `window.__bench` after 20 s.
 | Date | Machine | Scenario | Sim ms/frame mean | Sim ms/frame p95 | fps | Draw ms |
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-10-19 | M-series Mac (controller to confirm) | 5,000 walkers, x3 (3 steps/frame) | 2.60 | 2.71 | TBD (browser check) | TBD (browser check) |
-| 2026-10-19 (Task 23, balance pass) | Apple M4 Pro, headless (`npm run bench:sim`, 3 runs) | 5,000 walkers, x3 (3 steps/frame) | 3.43 | 3.52 | controller to check in Chrome | controller to check in Chrome |
+| 2026-10-19 (Task 23, balance pass) | Apple M4 Pro, headless (`npm run bench:sim`, 3 runs) | 5,000 walkers, x3 (3 steps/frame) | 3.43 | 3.52 | see "After the balance pass" below | see below |
 
 Gate: PASS if fps >= 55 and sim + draw <= 12 ms per frame.
 
@@ -32,5 +32,20 @@ Machine: user's Mac, real Chrome (visible tab), production build via `vite previ
 | 2 | 59.7 | 57.1 | 5.23 | 0.98 |
 
 Gate: fps >= 55 and sim + draw <= 12 ms: PASS at every zoom.
+
+## After the balance pass (Task 23)
+
+Measured by the controller: real Chrome, production build, window 830x906, devicePixelRatio 1.
+
+| Run | fps mean | fps p5 | sim ms | draw ms |
+| --- | --- | --- | --- | --- |
+| Bench, zoom 1, run 1 (machine busy with other runs) | 52.1 | 31 | 10.3 | - |
+| Bench, zoom 1, run 2 | 57.7 | 53.5 | 7.7 | 0.7 |
+| Real game at x3, early in the day | 60.1 | 53.5 | - | - |
+| Real game at 10+ platforms at peak | to measure | | | |
+
+Run 2 passes the gate (fps >= 55, sim + draw 8.4 ms); run 1 shared the machine with other runs.
+
+People fall back to Canvas 2D (`drawPeople2d`) when WebGL2 is unavailable or its context is lost. That path draws one batched path per shape and fill rather than instancing, and has not been measured against the gate.
 
 The headless-Chrome numbers (60 fps, sim 2.6-2.8 ms) were an informal implementer check only; the GPU path there is unconfirmed, so the real-Chrome rows above are the authoritative ones.

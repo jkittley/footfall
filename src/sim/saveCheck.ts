@@ -101,6 +101,9 @@ export function checkSave(save: unknown, slotCount: number): void {
   const growth = obj(s.growth, "growth");
   for (const k of ["goodSince", "badSince"]) need(growth[k] === null || finite(growth[k]), `growth.${k}`);
   need(finite(growth.cooldownUntil), "growth.cooldownUntil");
+  // Saves written before the daily rule lack these; they load as no day closed yet.
+  if (growth.lastDayRate !== undefined) need(growth.lastDayRate === null || finite(growth.lastDayRate), "growth.lastDayRate");
+  if (growth.badDays !== undefined) need(finite(growth.badDays), "growth.badDays");
 
   need(finite(obj(s.grid, "grid").version), "grid.version");
   const t = obj(s.turnstiles, "turnstiles");

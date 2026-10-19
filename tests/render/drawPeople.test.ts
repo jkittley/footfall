@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { isDrawn } from "../../src/render/drawPeople2d";
 import { tryCreate } from "../../src/render/rendererChoice";
+import { PState, PeopleStore } from "../../src/sim/people";
 import { inset, POLYS, RING_PX } from "../../src/render/shapes";
 
 describe("tryCreate", () => {
@@ -36,5 +38,19 @@ describe("inset", () => {
         expect(dist(b)).toBeCloseTo(RING_PX, 6);
       }
     }
+  });
+});
+
+describe("isDrawn", () => {
+  it("leaves out people being served inside a facility, so they don't cover the next in its queue", () => {
+    const p = new PeopleStore(4);
+    const shown = [PState.Walking, PState.InQueue, PState.Seated, PState.InFacility].map((st) => {
+      const i = p.alloc();
+      p.state[i] = st;
+      return isDrawn(p, i);
+    });
+    expect(shown).toEqual([true, true, true, false]);
+    p.free(0);
+    expect(isDrawn(p, 0)).toBe(false);
   });
 });

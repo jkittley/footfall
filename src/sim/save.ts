@@ -3,9 +3,9 @@ import { MAX_PEOPLE } from "./constants";
 import type { Disruption } from "./disruptions";
 import { Ledger, type DayStats, type LedgerLine } from "./economy";
 import type { Facility } from "./facilities";
-import type { Grid, Rect } from "./grid";
+import { BUILT_FLOOR, BUILT_TOP, Tile, type Grid, type Rect } from "./grid";
 import type { GrowthState } from "./growth";
-import { HARBOUR_STREET } from "./maps/harbourStreet";
+import { HARBOUR_STREET, buildGrid } from "./maps/harbourStreet";
 import { restoreTurnstiles, saveTurnstiles, type TurnstileSave } from "./movement";
 import type { Sign } from "./needs";
 import { PeopleStore, type PeopleSave } from "./people";
@@ -44,9 +44,9 @@ interface SaveFile {
   stats: DayStats;
   ledger: { balance: number; today: Record<LedgerLine, number> };
   meter: { minutes: number[]; total: number[]; onTime: number[] };
-  growth: GrowthState;
+  growth: Omit<GrowthState, "lastDayRate" | "badDays"> & Partial<Pick<GrowthState, "lastDayRate" | "badDays">>;
   /** The station grounds' tiles, row by row: the rest of the city is constant and rebuilt on load. */
-  grid: { version: number; tiles: string; zones: string; zoneOwner: string; dir: string };
+  grid: { version: number; tiles: string; zones: string; zoneOwner: string; dir: string; built?: string };
   /** The ticket gates' cadence and queues. */
   turnstiles: TurnstileSave;
   people: PeopleSave;
@@ -90,6 +90,7 @@ export function serialise(w: World): string {
       zones: encodeBytes(cut(g, g.zones, w.map.grounds)),
       zoneOwner: encodeBytes(cut(g, g.zoneOwner, w.map.grounds)),
       dir: encodeBytes(cut(g, g.dir, w.map.grounds)),
+      built: encodeBytes(cut(g, g.built, w.map.grounds)),
     },
     turnstiles: saveTurnstiles(w.turnstiles, g),
     people: w.people.toSave(),
@@ -122,6 +123,23 @@ function restoreRect<T extends TileArray>(g: Grid, a: T, r: Rect, b64: string, n
 }
 
 /**
+ * For a save from before built tiles were recorded: whatever differs from the station as it stood
+ * with its platforms freshly opened is taken as the player's.
+ */
+function markBuiltSinceStart(g: Grid, start: Grid, r: Rect): void {
+  for (let y = r.y; y < r.y + r.h; y++) {
+    for (let x = r.x; x < r.x + r.w; x++) {
+      const i = g.idx(x, y);
+      const was = start.tiles[i] as Tile;
+      const now = g.tiles[i] as Tile;
+      let bits = was === Tile.Ground && now !== Tile.Ground ? BUILT_FLOOR : 0;
+      if ((now === Tile.Wall || now === Tile.Rail || now === Tile.Gate) && now !== was) bits |= BUILT_TOP;
+      g.built[i] = bits;
+    }
+  }
+}
+
+/**
  * Builds a fresh world (so the route fields and crowd grid belong to it) and overwrites its state
  * with the save's.
  */
@@ -149,7 +167,7 @@ export function deserialise(json: string): World {
   w.meter.minutes = s.meter.minutes;
   w.meter.total = s.meter.total;
   w.meter.onTime = s.meter.onTime;
-  w.growth = s.growth;
+  w.growth = { ...s.growth, lastDayRate: s.growth.lastDayRate ?? null, badDays: s.growth.badDays ?? 0 };
 
   const g = w.grid;
   const r = w.map.grounds;
@@ -157,6 +175,8 @@ export function deserialise(json: string): World {
   restoreRect(g, g.zones, r, s.grid.zones, "grid.zones");
   restoreRect(g, g.zoneOwner, r, s.grid.zoneOwner, "grid.zoneOwner");
   restoreRect(g, g.dir, r, s.grid.dir, "grid.dir");
+  if (s.grid.built !== undefined) restoreRect(g, g.built, r, s.grid.built, "grid.built");
+  else markBuiltSinceStart(g, buildGrid(HARBOUR_STREET, s.platformsAdded), r);
   g.version = s.grid.version;
   restoreTurnstiles(w.turnstiles, s.turnstiles);
 

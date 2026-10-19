@@ -2,16 +2,22 @@
 declare const process: { argv: string[]; exitCode?: number };
 
 import { createAutoplay, playDays, roomyStation, type DayRow } from "../src/sim/autoplay";
+import { currentHoliday } from "../src/sim/clock";
 import { SIM_DT } from "../src/sim/constants";
 import { createWorld, step } from "../src/sim/world";
 
 // npm run balance                         every target, with a PASS/FAIL line each (exit 1 on a FAIL)
-// npm run balance idle|autoplay [days] [seeds]   one player's per-day table, e.g. autoplay 26 1,2,3
+// npm run balance idle|autoplay [days] [seeds]   one player's per-day table, e.g. autoplay 49 1,2,3
 // npm run balance needs [seeds]          the whole-day toilets-and-seating check
 
 const SEEDS = [1, 2, 3];
 const IDLE_DAYS = 3;
-const AUTOPLAY_DAYS = 26;
+/** Through the first summer holidays (game days 29-42) and the week after. */
+const AUTOPLAY_DAYS = 49;
+/** The balance may dip this far below zero, and no further. */
+const SUMMER_FLOOR = -20000;
+/** Game days after the holidays end by which the balance must be positive again. */
+const RECOVER_DAYS = 7;
 
 const pct = (x: number | null): string => (x === null ? "-" : `${(x * 100).toFixed(1)}%`);
 const money = (x: number): string => Math.round(x).toLocaleString("en-GB");
@@ -31,6 +37,7 @@ function printRow(row: DayRow): void {
       money(row.balance).padStart(8),
       money(row.income).padStart(8),
       money(row.upkeep).padStart(7),
+      `${row.closed > 0 ? `-${row.closed}` : ""}${row.reopened > 0 ? `+${row.reopened}` : ""}`.padStart(5),
       String(row.moved).padStart(5),
       String(row.peakGateQueue).padStart(11),
       row.gates.join("").padEnd(9),
@@ -42,9 +49,11 @@ function printRow(row: DayRow): void {
 function table(player: "idle" | "autoplay", days: number, seed: number): DayRow[] {
   const w = createWorld(seed);
   console.log(`\n${player} player, seed ${seed}, ${days} game days`);
-  console.log("day |  added | active | on-time | worst meter |  balance |   income |  upkeep | moved | peak gate q | gates     | rent x");
+  console.log("day |  added | active | on-time | worst meter |  balance |   income |  upkeep | shut+open | moved | peak gate q | gates     | rent x");
   return playDays(w, days, player === "idle" ? null : createAutoplay(w), printRow);
 }
+
+const isSummer = (r: DayRow): boolean => currentHoliday(r.day * 1440 + 720) === "Summer holidays";
 
 /** The 1-based game day on which `n` platforms had been added, or null. */
 function dayReaching(rows: DayRow[], n: number): number | null {
@@ -106,11 +115,29 @@ if (mode === "idle" || mode === "autoplay") {
     const hours = (d: number | null): string => (d === null ? "not reached" : `game day ${d} (${((d * 10) / 60).toFixed(1)} h at x1)`);
     check(`autoplay, seed ${seed}: 6 platforms in game days 9-15`, hours(six), six !== null && six >= 9 && six <= 15);
     check(`autoplay, seed ${seed}: 10 platforms in game days 18-24`, hours(ten), ten !== null && ten >= 18 && ten <= 24);
-    const after = rows.filter((r) => r.day + 1 > 2);
-    const low = Math.min(...after.map((r) => r.balance));
-    check(`autoplay, seed ${seed}: money positive after day 2`, `lowest ${money(low)}`, low > 0);
-    const rent = median(rows.filter((r) => r.day + 1 > 3).flatMap((r) => r.rentMuls));
+    const summer = rows.filter(isSummer);
+    const firstSummer = summer[0]!.day;
+    const lastSummer = summer[summer.length - 1]!.day;
+    const spring = rows.filter((r) => r.day < firstSummer);
+    const low = Math.min(...spring.filter((r) => r.day + 1 > 2).map((r) => r.balance));
+    check(`autoplay, seed ${seed}: money positive after day 2, up to the summer`, `lowest ${money(low)}`, low > 0);
+    const rent = median(spring.filter((r) => r.day + 1 > 3).flatMap((r) => r.rentMuls));
     check(`autoplay, seed ${seed}: typical concourse shop near x1.0 rent (median 0.8-1.25)`, `median x${rent.toFixed(2)}`, rent >= 0.8 && rent <= 1.25);
+    const floor = Math.min(...rows.map((r) => r.balance));
+    check(`autoplay, seed ${seed}: balance never below ${money(SUMMER_FLOOR)} over ${AUTOPLAY_DAYS} days`, `lowest ${money(floor)}`, floor >= SUMMER_FLOOR);
+    const recovered = rows.find((r) => r.day >= lastSummer && r.balance > 0);
+    check(
+      `autoplay, seed ${seed}: balance positive within ${RECOVER_DAYS} days of the summer's end (game day ${lastSummer + 1})`,
+      recovered ? `positive on game day ${recovered.day + 1}` : "still negative",
+      recovered !== undefined && recovered.day - lastSummer <= RECOVER_DAYS,
+    );
+    const closures = summer.filter((r) => r.closed > 0).map((r) => r.day + 1);
+    check(`autoplay, seed ${seed}: platforms close in the summer`, closures.length > 0 ? `on game days ${closures.join(", ")}` : "none", closures.length > 0);
+    const firstClose = summer.find((r) => r.closed > 0)?.day ?? Infinity;
+    const reopen = rows.find((r) => r.day > firstClose && r.reopened > 0);
+    check(`autoplay, seed ${seed}: and reopen afterwards`, reopen ? `first on game day ${reopen.day + 1}` : "none", reopen !== undefined);
+    const weekdays = summer.filter((r) => r.onTime !== null && (r.day % 7) < 5).map((r) => r.onTime!);
+    console.log(`summer weekdays on time ${pct(Math.min(...weekdays))}-${pct(Math.max(...weekdays))}, lowest balance ${money(Math.min(...summer.map((r) => r.balance)))}`);
   }
   const gain = needsCheck(SEEDS);
   check("roomy station: toilets and seating at least 5 points better over a whole day", `${gain.toFixed(1)} points`, gain >= 5);

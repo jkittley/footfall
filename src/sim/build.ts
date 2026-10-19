@@ -1,6 +1,6 @@
 import { PRICES, REMOVE_REFUND } from "./economy";
 import { FacilityKind, createFacility, refreshAccess, releasePerson, removeFacility, serviceTilesOf, type Facility } from "./facilities";
-import { Dir, Tile, Zone, type Grid, type Rect } from "./grid";
+import { BUILT_FLOOR, BUILT_TOP, Dir, Tile, Zone, type Grid, type Rect } from "./grid";
 import { inRect, walkArea } from "./maps/city";
 import { isIslandCentre, isPlatformEdge } from "./maps/harbourStreet";
 import { nudgeToWalkable } from "./movement";
@@ -285,7 +285,8 @@ function gatesAfter(w: World, edits: readonly Edit[]): number[] {
  * Walls, rails, travelators and signs in the rect and every facility it touches come down, each
  * tile back to what it was built on (plain floor, or platform on an island); plain floor in the
  * rect (never a platform, entrance or apron) goes back to ground; an open gate closes again,
- * unless it is its island's last.
+ * unless it is its island's last. Half the price comes back, of what the player built only (see
+ * Grid.built): the starting floor and gates, and an island's own, refund nothing.
  */
 function planRemove(w: World, plan: Plan): Plan {
   const g = w.grid;
@@ -316,27 +317,28 @@ function planRemove(w: World, plan: Plan): Plan {
   }
   for (const i of rectTiles(g, pv.rect)) {
     const t = g.tiles[i] as Tile;
+    const paidTop = (g.built[i]! & BUILT_TOP) !== 0;
     if (t === Tile.Gate) {
       plan.edits.push({ i, tile: Tile.GateClosed });
-      refund += PRICES.gate;
+      if (paidTop) refund += PRICES.gate;
       changed.add(i);
     } else if (t === Tile.Wall || t === Tile.Rail) {
       const [x, y] = g.xy(i);
       plan.edits.push({ i, tile: isIslandCentre(w.map, x, y) ? Tile.Platform : Tile.Floor });
-      refund += t === Tile.Wall ? PRICES.wall : PRICES.rail;
+      if (paidTop) refund += t === Tile.Wall ? PRICES.wall : PRICES.rail;
       changed.add(i);
     } else if (g.zones[i] === Zone.Travelator) {
       continue;
     } else if (plainFloor(w, signs, i) && !isFoot(w, i)) {
       plan.edits.push({ i, tile: Tile.Ground });
-      refund += PRICES.floor;
+      if (g.built[i]! & BUILT_FLOOR) refund += PRICES.floor;
       changed.add(i);
     } else if (t === Tile.Platform || t === Tile.Entrance || (t === Tile.Floor && g.zones[i] === Zone.None && isFoot(w, i))) {
       pv.blocked.push(i);
     }
   }
   pv.tiles = [...changed].sort((a, b) => a - b);
-  pv.cost = -REMOVE_REFUND * refund;
+  pv.cost = refund > 0 ? -REMOVE_REFUND * refund : 0;
   if (pv.tiles.length === 0) return refuse(plan, "Nothing to remove here");
   if (gatesAfter(w, plan.edits).some((n) => n === 0)) return refuse(plan, "An island needs at least one gate");
   return plan;
@@ -364,6 +366,16 @@ function applyEdits(g: Grid, edits: readonly Edit[], owner = -1): void {
     if (e.tile !== undefined) g.setTile(x, y, e.tile);
     if (e.zone !== undefined) g.setZone(x, y, e.zone, e.zone === Zone.None ? -1 : owner);
     if (e.dir !== undefined) g.setDir(x, y, e.dir);
+  }
+}
+
+/** Records which tiles the player paid for, so removing refunds only those. */
+function markBuilt(g: Grid, tool: ToolId, edits: readonly Edit[]): void {
+  const bit = tool === "floor" ? BUILT_FLOOR : tool === "wall" || tool === "rail" || tool === "gate" ? BUILT_TOP : 0;
+  for (const e of edits) {
+    if (e.tile === undefined) continue;
+    if (tool === "remove") g.built[e.i] = e.tile === Tile.Ground ? 0 : g.built[e.i]! & ~BUILT_TOP;
+    else g.built[e.i] = g.built[e.i]! | bit;
   }
 }
 
@@ -549,6 +561,7 @@ export function applyPlacement(w: World, p: PlacementPreview): boolean {
   if (fresh.removedSigns.length > 0) w.signs = w.signs.filter((s) => !fresh.removedSigns.includes(s));
   if (fresh.newFacility !== null) createFacility(w, fresh.newFacility, pv.rect);
   else applyEdits(w.grid, fresh.edits, pv.tool === "travelator" ? w.nextId++ : -1);
+  markBuilt(w.grid, pv.tool, fresh.edits);
   // A gate that closes forgets its cadence, so one opened there later starts fresh.
   for (const e of fresh.edits) if (e.tile === Tile.GateClosed) w.turnstiles.nextFree[e.i] = -Infinity;
   if (pv.tool === "sign" && pv.signKind !== undefined) addSign(w, pv.tiles[0]!, pv.signKind);

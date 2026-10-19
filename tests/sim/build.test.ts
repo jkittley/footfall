@@ -380,10 +380,12 @@ test("Gate tool opens a closed slot, costs 500, and remove refuses the last gate
   const unopened = w.map.islands[1]!.gateLine;
   expect(previewPlacement(w, "gate", { x: unopened.x, y: unopened.y, w: 1, h: 1 }).valid).toBe(false);
 
+  // The island came with this gate, so closing it refunds nothing; the one bought refunds half.
   const close = previewPlacement(w, "remove", middle);
-  expect(close).toMatchObject({ valid: true, cost: -REMOVE_REFUND * PRICES.gate });
+  expect(close).toMatchObject({ valid: true, cost: 0 });
   expect(applyPlacement(w, close)).toBe(true);
   expect(w.grid.tile(line.x + 1, line.y)).toBe(Tile.GateClosed);
+  expect(previewPlacement(w, "remove", outer).cost).toBe(-REMOVE_REFUND * PRICES.gate);
   expect(applyPlacement(w, previewPlacement(w, "remove", outer))).toBe(true);
   expect(w.grid.tile(line.x, line.y)).toBe(Tile.GateClosed);
 
@@ -521,4 +523,21 @@ test("building and removing 100 shops leaves no route fields behind for them", (
   runMinutes(w, 1);
   // About 640 KB a field at 500 x 320: what is held is what is in use, not one per shop ever built.
   expect(w.fields.size).toBeLessThanOrEqual(baseline + 2);
+});
+
+test("remove refunds only what the player built: the starting floor refunds nothing", () => {
+  const w = createWorld(1);
+  expect(previewPlacement(w, "remove", at(6, 59, 1, 1))).toMatchObject({ valid: true, cost: 0 });
+  // New floor beside it, and a rail on the starting floor: each refunds half its own price.
+  expect(applyPlacement(w, previewPlacement(w, "floor", at(5, 59, 1, 1)))).toBe(true);
+  expect(previewPlacement(w, "remove", at(5, 59, 2, 1)).cost).toBe(-REMOVE_REFUND * PRICES.floor);
+  expect(applyPlacement(w, previewPlacement(w, "rail", at(7, 59, 1, 1)))).toBe(true);
+  expect(previewPlacement(w, "remove", at(7, 59, 1, 1)).cost).toBe(-REMOVE_REFUND * PRICES.rail);
+  expect(applyPlacement(w, previewPlacement(w, "remove", at(7, 59, 1, 1)))).toBe(true);
+  // The rail is gone; the starting floor under it still refunds nothing.
+  expect(previewPlacement(w, "remove", at(7, 59, 1, 1)).cost).toBe(0);
+  // Floor removed and laid again is the player's.
+  expect(applyPlacement(w, previewPlacement(w, "remove", at(6, 59, 1, 1)))).toBe(true);
+  expect(applyPlacement(w, previewPlacement(w, "floor", at(6, 59, 1, 1)))).toBe(true);
+  expect(previewPlacement(w, "remove", at(6, 59, 1, 1)).cost).toBe(-REMOVE_REFUND * PRICES.floor);
 });

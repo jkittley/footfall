@@ -172,7 +172,7 @@ export function onTrainArrived(w: World, s: Service): void {
       }
     }
     const exit = pickExit(w, exits, tile);
-    // Unreachable in play: a build that cuts a platform off from every exit is refused (Task 12).
+    // Unreachable in play: a build that cuts a platform off from every exit is refused.
     if (!exit) continue;
     const i = spawn(w, tile, Journey.Arriving, `exit:${exit.id}`, exit.walk, w.minute + exit.walk + sampleSlack(rng));
     people.destLabel[i] = arrivalLabel(w);
@@ -241,7 +241,7 @@ export function sendToExit(w: World, i: number): void {
   const tile = Math.floor(p.y[i]!) * w.grid.w + Math.floor(p.x[i]!);
   const exit = pickExit(w, exitFields(w), tile);
   if (!exit) {
-    // Unreachable in play (Task 12 refuses builds that strand people); nowhere to go, so they leave.
+    // Unreachable in play (builds that strand people are refused); nowhere to go, so they leave.
     p.free(i);
     return;
   }

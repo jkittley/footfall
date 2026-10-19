@@ -1,6 +1,6 @@
 import type { Camera } from "./camera";
 import { Journey, Mode, type PeopleStore } from "../sim/people";
-import { drawPeople2d } from "./drawPeople2d";
+import { drawPeople2d, isDrawn } from "./drawPeople2d";
 import { FLOOR, MODE_COLOURS, hexToUnit } from "./palette";
 import { fan, inset, leftHalf, POLYS, RING_PX } from "./shapes";
 import { tryCreate } from "./rendererChoice";
@@ -190,7 +190,7 @@ class PeopleRenderer {
     const end = people.end;
     if (this.inst.length < people.cap * 2) this.inst = new Float32Array(people.cap * 2);
     this.counts.fill(0);
-    for (let i = 0; i < end; i++) if (people.isAlive(i)) this.counts[mode[i]! * 3 + journey[i]!]!++;
+    for (let i = 0; i < end; i++) if (isDrawn(people, i)) this.counts[mode[i]! * 3 + journey[i]!]!++;
     let acc = 0;
     for (let g = 0; g < GROUPS; g++) {
       this.starts[g] = acc;
@@ -200,7 +200,7 @@ class PeopleRenderer {
     this.packed = acc;
     const inst = this.inst;
     for (let i = 0; i < end; i++) {
-      if (!people.isAlive(i)) continue;
+      if (!isDrawn(people, i)) continue;
       const g = mode[i]! * 3 + journey[i]!;
       const c = this.cursor[g]!++;
       inst[c * 2] = x[i]!;

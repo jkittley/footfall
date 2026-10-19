@@ -3,27 +3,26 @@ import { PRICES } from "../sim/economy";
 import { Dir } from "../sim/grid";
 import type { Sign } from "../sim/needs";
 import { button, el, icon, setText } from "./dom";
-import { formatMoney } from "./format";
+import { TOOL_NAMES, formatMoney } from "./format";
 
 interface ToolDef {
   id: ToolId;
-  label: string;
   /** Per tile (per sign, per gate). */
   price: number | null;
   icon: string;
 }
 
 const TOOLS: readonly ToolDef[] = [
-  { id: "floor", label: "Floor", price: PRICES.floor, icon: icon('<rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M4 12h16M12 4v16"></path>') },
-  { id: "retail", label: "Shop", price: PRICES.retail, icon: icon('<path d="M4 9l1.5-4h13L20 9M5 9v10h14V9M4 9h16M10 19v-5h4v5"></path>') },
-  { id: "seating", label: "Seating", price: PRICES.seating, icon: icon('<path d="M5 8h14M4 12h16M6 12v6M18 12v6"></path>') },
-  { id: "toilet", label: "Toilets", price: PRICES.toilet, icon: icon('<circle cx="8" cy="5.5" r="1.8"></circle><circle cx="16" cy="5.5" r="1.8"></circle><path d="M8 10v10M6 10h4M16 10l-3 6h6zM16 16v4"></path>') },
-  { id: "wall", label: "Wall", price: PRICES.wall, icon: icon('<path d="M4 12h16"></path>', 20, 4) },
-  { id: "rail", label: "Rail", price: PRICES.rail, icon: icon('<path d="M3 8h18M6 8v10M12 8v10M18 8v10"></path>') },
-  { id: "gate", label: "Gate", price: PRICES.gate, icon: icon('<path d="M5 6v12M19 6v12M5 12h5M14 12h5"></path>') },
-  { id: "sign", label: "Sign", price: PRICES.sign, icon: icon('<rect x="3" y="5" width="18" height="13" rx="2"></rect><path d="M8 11.5h8M13 8.5l3 3-3 3"></path>') },
-  { id: "travelator", label: "Travelator", price: PRICES.travelator, icon: icon('<rect x="3" y="7" width="18" height="10" rx="2"></rect><path d="M7 12h9M13 9.5l3 2.5-3 2.5"></path>') },
-  { id: "remove", label: "Remove", price: null, icon: icon('<path d="M4 20h16"></path><path d="M7 16l9-9 3 3-9 9H7z"></path>') },
+  { id: "floor", price: PRICES.floor, icon: icon('<rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M4 12h16M12 4v16"></path>') },
+  { id: "retail", price: PRICES.retail, icon: icon('<path d="M4 9l1.5-4h13L20 9M5 9v10h14V9M4 9h16M10 19v-5h4v5"></path>') },
+  { id: "seating", price: PRICES.seating, icon: icon('<path d="M5 8h14M4 12h16M6 12v6M18 12v6"></path>') },
+  { id: "toilet", price: PRICES.toilet, icon: icon('<circle cx="8" cy="5.5" r="1.8"></circle><circle cx="16" cy="5.5" r="1.8"></circle><path d="M8 10v10M6 10h4M16 10l-3 6h6zM16 16v4"></path>') },
+  { id: "wall", price: PRICES.wall, icon: icon('<path d="M4 12h16"></path>', 20, 4) },
+  { id: "rail", price: PRICES.rail, icon: icon('<path d="M3 8h18M6 8v10M12 8v10M18 8v10"></path>') },
+  { id: "gate", price: PRICES.gate, icon: icon('<path d="M5 6v12M19 6v12M5 12h5M14 12h5"></path>') },
+  { id: "sign", price: PRICES.sign, icon: icon('<rect x="3" y="5" width="18" height="13" rx="2"></rect><path d="M8 11.5h8M13 8.5l3 3-3 3"></path>') },
+  { id: "travelator", price: PRICES.travelator, icon: icon('<rect x="3" y="7" width="18" height="10" rx="2"></rect><path d="M7 12h9M13 9.5l3 2.5-3 2.5"></path>') },
+  { id: "remove", price: null, icon: icon('<path d="M4 20h16"></path><path d="M7 16l9-9 3 3-9 9H7z"></path>') },
 ];
 
 const SIGN_KINDS: readonly [Sign["kind"], string][] = [
@@ -62,8 +61,8 @@ export class ToolRail {
     for (const t of TOOLS) {
       const b = button("tool", { onClick: () => this.select(this.tool === t.id ? null : t.id) });
       b.innerHTML = t.icon;
-      b.append(el("span", "tool-label", t.label), el("span", "tool-price mono", t.price === null ? "" : formatMoney(t.price)));
-      b.setAttribute("aria-label", t.price === null ? t.label : `${t.label}, ${formatMoney(t.price)}${t.id === "sign" || t.id === "gate" ? "" : " a tile"}`);
+      b.append(el("span", "tool-label", TOOL_NAMES[t.id]), el("span", "tool-price mono", t.price === null ? "" : formatMoney(t.price)));
+      b.setAttribute("aria-label", t.price === null ? TOOL_NAMES[t.id] : `${TOOL_NAMES[t.id]}, ${formatMoney(t.price)}${t.id === "sign" || t.id === "gate" ? "" : " a tile"}`);
       this.buttons.set(t.id, b);
       rail.append(b);
     }

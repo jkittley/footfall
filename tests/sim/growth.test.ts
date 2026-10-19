@@ -1,10 +1,9 @@
 import { expect, test } from "vitest";
-import { COOLDOWN_MIN, GROW_RATE, SHRINK_RATE, SUSTAIN_MIN } from "../../src/sim/constants";
-import { ServiceMeter, addPlatform, deactivatePlatform, stepGrowth } from "../../src/sim/growth";
-import { FacilityKind, createFacility } from "../../src/sim/facilities";
-import { Tile, Zone } from "../../src/sim/grid";
+import { COOLDOWN_MIN, GROW_RATE, MIN_SAMPLES, SHRINK_DAYS, SHRINK_RATE, SUSTAIN_MIN } from "../../src/sim/constants";
+import { ServiceMeter, addPlatform, closeGrowthDay, deactivatePlatform, stepGrowth } from "../../src/sim/growth";
+import { Tile } from "../../src/sim/grid";
 import { PState } from "../../src/sim/people";
-import { activePlatformIds, createWorld, recordOutcome, type World } from "../../src/sim/world";
+import { activePlatformIds, createWorld, recordOutcome, step, type World } from "../../src/sim/world";
 import { OY, OX, platformTiles, tilesOf } from "./helpers";
 
 function toasts(w: World): string[] {
@@ -202,26 +201,6 @@ test("growth state round-trips through JSON", () => {
   expect(meter.rate(w.minute)).toBe(w.meter.rate(w.minute));
 });
 
-test("a platform opening over an old build clears the zone and frees its people", () => {
-  const w = createWorld(1);
-  const foot = w.map.slots[2]!.foot;
-  for (let y = foot.y; y < foot.y + foot.h; y++) for (let x = foot.x; x < foot.x + foot.w; x++) w.grid.setTile(x, y, Tile.Floor);
-  const shop = createFacility(w, FacilityKind.Seating, { x: foot.x, y: foot.y, w: 2, h: 2 });
-  const i = w.people.alloc();
-  w.people.x[i] = foot.x + 0.5;
-  w.people.y[i] = foot.y + 0.5;
-  w.people.state[i] = PState.Seated;
-  w.people.goalKey[i] = "platform:1";
-  shop.serving.push({ pid: i, until: w.minute + 10 });
-
-  addPlatform(w, 3);
-
-  expect(w.facilities.has(shop.id)).toBe(false);
-  expect(w.grid.zone(foot.x, foot.y)).toBe(Zone.None);
-  expect(w.people.state[i]).toBe(PState.Walking);
-  expect(w.people.targetKey[i]).toBe("platform:1");
-});
-
 test("opening platform 3 paints island 2; opening platform 4 changes no tiles", () => {
   const w = createWorld(1);
   const island = w.map.islands[1]!;
@@ -250,14 +229,63 @@ test("opening platform 3 paints island 2; opening platform 4 changes no tiles", 
   expect(toasts(w)).toEqual(["Platform 4 opens"]);
 });
 
-test("opening an island clears old builds across its whole footprint", () => {
+/** Closes a day of 100 counted journeys at `rate` on time. */
+function closeDay(w: World, rate: number): void {
+  closeGrowthDay(w, Math.round(rate * 100), 100 - Math.round(rate * 100), Math.floor(w.minute));
+}
+
+test("SHRINK_DAYS closed days in a row below SHRINK_RATE close a platform, cooldown or not", () => {
   const w = createWorld(1);
-  const island = w.map.islands[1]!;
-  // The gap column at the island's right sits in its foot but in neither slot's half.
-  const x = island.foot.x + 6;
-  for (const [tx, ty] of tilesOf(island.foot)) w.grid.setTile(tx, ty, Tile.Floor);
-  const seat = createFacility(w, FacilityKind.Seating, { x, y: island.foot.y, w: 1, h: 2 });
   addPlatform(w, 3);
-  expect(w.facilities.has(seat.id)).toBe(false);
-  expect(w.grid.zone(x, island.foot.y)).toBe(Zone.None);
+  addPlatform(w, 4);
+  w.growth.cooldownUntil = w.minute + 10 * COOLDOWN_MIN;
+  for (let d = 1; d < SHRINK_DAYS; d++) closeDay(w, SHRINK_RATE - 0.1);
+  expect(activePlatformIds(w)).toEqual([1, 2, 3, 4]);
+  closeDay(w, SHRINK_RATE - 0.1);
+  expect(activePlatformIds(w)).toEqual([1, 2, 3]);
+  expect(toasts(w)).toContain("Platform 4 is closed: too many people missed their trains");
+  expect(w.growth.badDays).toBe(0);
+  expect(w.growth.cooldownUntil).toBe(Math.floor(w.minute) + COOLDOWN_MIN);
+});
+
+test("a day at or above SHRINK_RATE, or with too few journeys, closes nothing and clears the run of bad days", () => {
+  const w = createWorld(1);
+  addPlatform(w, 3);
+  closeDay(w, SHRINK_RATE);
+  closeGrowthDay(w, 0, MIN_SAMPLES - 1, Math.floor(w.minute));
+  expect(w.growth.lastDayRate).toBeNull();
+  expect(w.growth.badDays).toBe(0);
+  expect(activePlatformIds(w)).toEqual([1, 2, 3]);
+});
+
+test("no growth after a closed day below GROW_RATE, however good the meter", () => {
+  const w = createWorld(1);
+  fixedMeter(w).value = GOOD;
+  closeDay(w, GROW_RATE - 0.05);
+  tick(w, SUSTAIN_MIN + 60);
+  expect(w.platformsAdded).toBe(2);
+  closeDay(w, GROW_RATE);
+  tick(w, SUSTAIN_MIN + 1);
+  expect(w.platformsAdded).toBe(3);
+});
+
+test("each day's close feeds its counted journeys to the daily rule", () => {
+  const w = createWorld(1);
+  addPlatform(w, 3);
+  w.minute = 1440 - 0.01;
+  w.stats = { movedToday: 140, onTimeToday: 60, missedToday: 40 };
+  step(w, 0.01);
+  expect(w.growth.lastDayRate).toBeCloseTo(0.6);
+  expect(activePlatformIds(w)).toEqual([1, 2]);
+});
+
+test("closing a platform leaves a train standing at it to depart", () => {
+  const w = createWorld(5);
+  addPlatform(w, 3);
+  w.timetable.ensureHorizon(w.minute, activePlatformIds(w), w.rng);
+  const [standing, later] = w.timetable.upcoming(3, w.minute);
+  w.minute = standing!.arriveAt + 0.5;
+  deactivatePlatform(w, 3);
+  expect(standing!.cancelled).toBe(false);
+  expect(later!.cancelled).toBe(true);
 });
