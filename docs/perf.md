@@ -42,9 +42,9 @@ Measured by the controller: real Chrome, production build, window 830x906, devic
 | Bench, zoom 1, run 1 (machine busy with other runs) | 52.1 | 31 | 10.3 | - |
 | Bench, zoom 1, run 2 | 57.7 | 53.5 | 7.7 | 0.7 |
 | Real game at x3, early in the day | 60.1 | 53.5 | - | - |
-| Real game at 10+ platforms at peak | to measure | | | |
+| Real game at x3, 10 platforms, Monday 07:40-09:49 peak (seed 1 autoplay save, day 22) | 60.0 | 53.8 | - | - |
 
-Run 2 passes the gate (fps >= 55, sim + draw 8.4 ms); run 1 shared the machine with other runs.
+Run 2 passes the gate (fps >= 55, sim + draw 8.4 ms); run 1 shared the machine with other runs. The 10-platform peak run held 60 fps through a crush at the Platform 1-2 gates (worst frame 18.8 ms).
 
 People fall back to Canvas 2D (`drawPeople2d`) when WebGL2 is unavailable or its context is lost. That path draws one batched path per shape and fill rather than instancing, and has not been measured against the gate.
 
